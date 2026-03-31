@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Constellation</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #050510;
+      overflow: hidden;
+      font-family: 'Helvetica Neue', sans-serif;
+      color: white;
+    }
+
+    canvas {
+      display: block;
+      position: fixed;
+      top: 0; left: 0;
+    }
+
+    #overlay {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      pointer-events: none;
+      z-index: 10;
+      opacity: 1;
+      transition: opacity 2s ease;
+    }
+
+    #overlay h1 {
+      font-size: clamp(2rem, 6vw, 4rem);
+      font-weight: 200;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      background: linear-gradient(135deg, #a78bfa, #60a5fa, #34d399);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: shimmer 4s ease-in-out infinite alternate;
+    }
+
+    #overlay p {
+      margin-top: 1rem;
+      font-size: clamp(0.8rem, 2vw, 1rem);
+      letter-spacing: 0.2em;
+      color: rgba(255,255,255,0.35);
+      text-transform: uppercase;
+    }
+
+    @keyframes shimmer {
+      from { filter: hue-rotate(0deg); }
+      to   { filter: hue-rotate(40deg); }
+    }
+
+    #hint {
+      position: fixed;
+      bottom: 2rem;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 0.75rem;
+      letter-spacing: 0.15em;
+      color: rgba(255,255,255,0.2);
+      text-transform: uppercase;
+      pointer-events: none;
+      animation: pulse 3s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 0.2; }
+      50%       { opacity: 0.5; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+
+  <div id="overlay">
+    <h1>Constellation</h1>
+    <p>Touch to create stars</p>
+  </div>
+
+  <div id="hint">tap &amp; drag to interact</div>
+
+  <script>
+    const canvas = document.getElementById('c');
+    const ctx = canvas.getContext('2d');
+    const overlay = document.getElementById('overlay');
+
+    let W, H, mouse = { x: -9999, y: -9999, active: false };
+    let particles = [];
+    let touched = false;
+
+    const PARTICLE_COUNT = () => Math.min(Math.floor((W * H) / 8000), 160);
+    const MAX_DIST = 140;
+    const PALETTE = ['#a78bfa', '#60a5fa', '#34d399', '#f472b6', '#fbbf24'];
+
+    function resize() {
+      W = canvas.width  = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+      init();
+    }
+
+    class Particle {
+      constructor(x, y, burst) {
+        this.x  = x  ?? Math.random() * W;
+        this.y  = y  ?? Math.random() * H;
+        this.vx = (Math.random() - 0.5) * (burst ? 3 : 0.6);
+        this.vy = (Math.random() - 0.5) * (burst ? 3 : 0.6);
+        this.r  = Math.random() * 2 + 1;
+        this.color = PALETTE[Math.floor(Math.random() * PALETTE.length)];
+        this.alpha = burst ? 0 : Math.random() * 0.5 + 0.5;
+        this.targetAlpha = Math.random() * 0.5 + 0.5;
+        this.life = burst ? 0 : 1;
+      }
+
+      update() {
+        this.x += this.vx;
+        this.y += this.vy;
+
+        // Drift friction
+        this.vx *= 0.99;
+        this.vy *= 0.99;
+
+        // Fade in for burst particles
+        if (this.life < 1) {
+          this.life += 0.03;
+          this.alpha = this.life * this.targetAlpha;
+        }
+
+        // Gentle float
+        this.vy += Math.sin(Date.now() * 0.001 + this.x) * 0.003;
+        this.vx += Math.cos(Date.now() * 0.0008 + this.y) * 0.003;
+
+        // Bounce off edges
+        if (this.x < 0 || this.x > W) this.vx *= -1;
+        if (this.y < 0 || this.y > H) this.vy *= -1;
+        this.x = Math.max(0, Math.min(W, this.x));
+        this.y = Math.max(0, Math.min(H, this.y));
+
+        // Repel from cursor
+        if (mouse.active) {
+          const dx = this.x - mouse.x;
+          const dy = this.y - mouse.y;
+          const d  = Math.sqrt(dx * dx + dy * dy);
+          if (d < 80 && d > 0) {
+            const force = (80 - d) / 80 * 0.8;
+            this.vx += (dx / d) * force;
+            this.vy += (dy / d) * force;
+          }
+        }
+      }
+
+      draw() {
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+        ctx.fillStyle = this.color;
+        ctx.globalAlpha = this.alpha;
+        ctx.fill();
+      }
+    }
+
+    function init() {
+      particles = [];
+      const n = PARTICLE_COUNT();
+      for (let i = 0; i < n; i++) particles.push(new Particle());
+    }
+
+    function burst(x, y, count = 8) {
+      for (let i = 0; i < count; i++) particles.push(new Particle(x, y, true));
+      // Keep total particles manageable
+      const max = PARTICLE_COUNT() + 80;
+      if (particles.length > max) particles.splice(0, particles.length - max);
+    }
+
+    function drawConnections() {
+      for (let i = 0; i < particles.length; i++) {
+        for (let j = i + 1; j < particles.length; j++) {
+          const dx = particles[i].x - particles[j].x;
+          const dy = particles[i].y - particles[j].y;
+          const d  = Math.sqrt(dx * dx + dy * dy);
+          if (d < MAX_DIST) {
+            const alpha = (1 - d / MAX_DIST) * 0.25;
+            ctx.beginPath();
+            ctx.moveTo(particles[i].x, particles[i].y);
+            ctx.lineTo(particles[j].x, particles[j].y);
+            ctx.strokeStyle = particles[i].color;
+            ctx.globalAlpha = alpha;
+            ctx.lineWidth = 0.8;
+            ctx.stroke();
+          }
+        }
+      }
+    }
+
+    function loop() {
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = 'rgba(5, 5, 16, 0.18)';
+      ctx.fillRect(0, 0, W, H);
+
+      drawConnections();
+
+      for (const p of particles) {
+        p.update();
+        p.draw();
+      }
+
+      requestAnimationFrame(loop);
+    }
+
+    // Mouse
+    canvas.addEventListener('mousemove', e => {
+      mouse.x = e.clientX;
+      mouse.y = e.clientY;
+      mouse.active = true;
+    });
+    canvas.addEventListener('mouseleave', () => { mouse.active = false; });
+    canvas.addEventListener('click', e => {
+      burst(e.clientX, e.clientY, 12);
+      fadeOverlay();
+    });
+
+    // Touch (iPad)
+    canvas.addEventListener('touchmove', e => {
+      e.preventDefault();
+      const t = e.touches[0];
+      mouse.x = t.clientX;
+      mouse.y = t.clientY;
+      mouse.active = true;
+      if (Math.random() < 0.15) burst(t.clientX, t.clientY, 3);
+      fadeOverlay();
+    }, { passive: false });
+
+    canvas.addEventListener('touchstart', e => {
+      e.preventDefault();
+      const t = e.touches[0];
+      mouse.x = t.clientX;
+      mouse.y = t.clientY;
+      mouse.active = true;
+      burst(t.clientX, t.clientY, 10);
+      fadeOverlay();
+    }, { passive: false });
+
+    canvas.addEventListener('touchend', () => { mouse.active = false; });
+
+    function fadeOverlay() {
+      if (!touched) {
+        touched = true;
+        overlay.style.opacity = '0';
+      }
+    }
+
+    window.addEventListener('resize', resize);
+    resize();
+    loop();
+  </script>
+</body>
+</html>
