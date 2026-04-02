@@ -54,23 +54,47 @@ jobs:
           sshpass -e scp -o StrictHostKeyChecking=no deploy/research-app.service root@${{ secrets.DO_HOST }}:/etc/systemd/system/research-app.service
           echo DEPLOY_OK
 
-      - name: Start services
+      - name: Pre-flight check
         env:
           SSHPASS: ${{ secrets.DO_PASSWORD }}
         run: |
           sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} bash -c '
+            echo "==> Checking app.py exists..."
+            ls -la /root/research-app/app.py
+            echo "==> Checking templates..."
+            ls -la /root/research-app/templates/
+            echo "==> Checking .flask-env..."
+            test -f /root/.flask-env && echo ".flask-env exists" || echo ".flask-env MISSING"
+            echo "==> Testing flask import..."
+            python3 -c "import flask; print(\"flask OK:\", flask.__version__)"
+            echo "==> Testing anthropic import..."
+            python3 -c "import anthropic; print(\"anthropic OK:\", anthropic.__version__)"
+            echo "==> Test running app for 2 seconds..."
+            cd /root/research-app && timeout 2 python3 app.py 2>&1 || true
+            echo "==> PRE-FLIGHT DONE"
+          '
+
+      - name: Start services
+        env:
+          SSHPASS: ${{ secrets.DO_PASSWORD }}
+        run: |
+          DIAG=$(sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} bash -c '
             systemctl daemon-reload
             systemctl enable research-app
             systemctl restart research-app || true
             systemctl reload nginx
             sleep 3
             echo "=== Service status ==="
-            systemctl status research-app --no-pager || true
+            systemctl status research-app --no-pager 2>&1 || true
             echo "=== Recent logs ==="
-            journalctl -u research-app --no-pager -n 30 || true
+            journalctl -u research-app --no-pager -n 30 2>&1 || true
             echo "=== Checking if active ==="
             systemctl is-active research-app
-          '
+          ' 2>&1)
+          echo "$DIAG"
+          echo "SERVICE_DIAG<<EOF" >> $GITHUB_ENV
+          echo "$DIAG" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
 
       - name: Health check
         env:
@@ -82,7 +106,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          BODY="Deploy failed for commit ${{ github.sha }}.
+          Run logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          Service diagnostics:
+          $SERVICE_DIAG"
           gh issue create \
             --repo "${{ github.repository }}" \
-            --title "Deploy failed" \
-            --body "Deploy failed. Check logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            --title "Deploy failed — $(echo ${{ github.sha }} | cut -c1-7)" \
+            --body "$BODY"
