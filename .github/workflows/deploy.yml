@@ -18,91 +18,18 @@ jobs:
       - name: Install sshpass
         run: sudo apt-get install -y -qq sshpass
 
-      - name: Test SSH connection
-        env:
-          SSHPASS: ${{ secrets.DO_PASSWORD }}
-        run: sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "echo SSH_OK && hostname"
-
-      - name: Fix DNS and install Python packages
+      - name: Copy files to server
         env:
           SSHPASS: ${{ secrets.DO_PASSWORD }}
         run: |
-          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "
-            echo 'nameserver 8.8.8.8' > /etc/resolv.conf
-            echo 'nameserver 1.1.1.1' >> /etc/resolv.conf
-            echo '==> Testing DNS...'
-            ping -c1 -W5 pypi.org && echo 'DNS OK' || echo 'DNS still broken'
-            echo '==> Installing packages...'
-            pip3 install --break-system-packages flask anthropic
-            echo '==> Verifying...'
-            python3 -c 'import flask; print(flask.__version__)'
-            python3 -c 'import anthropic; print(anthropic.__version__)'
-            echo PACKAGES_OK
-          "
+          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "mkdir -p /root/research-app/templates"
+          sshpass -e scp -o StrictHostKeyChecking=no deploy/setup.sh root@${{ secrets.DO_HOST }}:/tmp/setup.sh
+          sshpass -e scp -o StrictHostKeyChecking=no app.py root@${{ secrets.DO_HOST }}:/root/research-app/app.py
+          sshpass -e scp -o StrictHostKeyChecking=no requirements.txt root@${{ secrets.DO_HOST }}:/root/research-app/requirements.txt
+          sshpass -e scp -o StrictHostKeyChecking=no templates/index.html root@${{ secrets.DO_HOST }}:/root/research-app/templates/index.html
 
-      - name: Create directories and write API key
+      - name: Run setup
         env:
           SSHPASS: ${{ secrets.DO_PASSWORD }}
         run: |
-          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "
-            mkdir -p /root/research-app/templates
-            echo 'ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}' > /root/.flask-env
-            chmod 600 /root/.flask-env
-            echo DIRS_OK
-          "
-
-      - name: Deploy app files and configs
-        env:
-          SSHPASS: ${{ secrets.DO_PASSWORD }}
-        run: |
-          sshpass -e scp -o StrictHostKeyChecking=no app.py requirements.txt root@${{ secrets.DO_HOST }}:/root/research-app/
-          sshpass -e scp -o StrictHostKeyChecking=no -r templates/ root@${{ secrets.DO_HOST }}:/root/research-app/templates/
-          sshpass -e scp -o StrictHostKeyChecking=no deploy/nginx.conf root@${{ secrets.DO_HOST }}:/etc/nginx/sites-available/default
-          sshpass -e scp -o StrictHostKeyChecking=no deploy/research-app.service root@${{ secrets.DO_HOST }}:/etc/systemd/system/research-app.service
-          echo DEPLOY_OK
-
-      - name: Start services
-        env:
-          SSHPASS: ${{ secrets.DO_PASSWORD }}
-        run: |
-          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "
-            systemctl daemon-reload
-            systemctl enable research-app
-            systemctl restart research-app
-            systemctl reload nginx
-            sleep 3
-            systemctl is-active research-app
-            echo SERVICES_OK
-          "
-
-      - name: Health check
-        env:
-          SSHPASS: ${{ secrets.DO_PASSWORD }}
-        run: |
-          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} \
-            "curl -sf http://localhost:5000/ > /dev/null && echo SITE_IS_LIVE || echo Site_not_responding_yet"
-
-      - name: Report failure
-        if: failure()
-        env:
-          GH_TOKEN: ${{ github.token }}
-          SSHPASS: ${{ secrets.DO_PASSWORD }}
-        run: |
-          set +e
-          DIAG=$(sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "
-            echo '=== pip list ==='
-            pip3 list 2>&1 | grep -iE 'flask|anthropic' || echo 'not installed'
-            echo '=== service ==='
-            systemctl status research-app --no-pager 2>&1
-            echo '=== journal ==='
-            journalctl -u research-app --no-pager -n 20 2>&1
-            echo '=== dns ==='
-            cat /etc/resolv.conf 2>&1
-            ping -c1 -W3 pypi.org 2>&1 || echo 'DNS broken'
-          " 2>&1) || true
-          echo "$DIAG"
-          gh issue create \
-            --repo "${{ github.repository }}" \
-            --title "Deploy diag — $(echo ${{ github.sha }} | cut -c1-7)" \
-            --body "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          ${DIAG}" || true
+          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "chmod +x /tmp/setup.sh && /tmp/setup.sh '${{ secrets.ANTHROPIC_API_KEY }}'"
