@@ -7,7 +7,7 @@ Type=simple
 User=root
 WorkingDirectory=/root/research-app
 EnvironmentFile=/root/.flask-env
-ExecStart=/root/research-app/venv/bin/python /root/research-app/app.py
+ExecStart=/usr/bin/python3 /root/research-app/app.py
 Restart=always
 RestartSec=3
 

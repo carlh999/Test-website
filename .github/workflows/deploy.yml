@@ -29,17 +29,11 @@ jobs:
           ls -la /tmp/packages/
           echo "DOWNLOAD_OK"
 
-      - name: Create venv on server
-        env:
-          SSHPASS: ${{ secrets.DO_PASSWORD }}
-        run: |
-          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} \
-            "mkdir -p /root/research-app && python3 -m venv /root/research-app/venv && echo VENV_OK"
-
       - name: Upload packages to server
         env:
           SSHPASS: ${{ secrets.DO_PASSWORD }}
         run: |
+          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "mkdir -p /root/research-app"
           sshpass -e scp -o StrictHostKeyChecking=no -r /tmp/packages/ root@${{ secrets.DO_HOST }}:/tmp/packages/
           echo "UPLOAD_OK"
 
@@ -48,7 +42,7 @@ jobs:
           SSHPASS: ${{ secrets.DO_PASSWORD }}
         run: |
           sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} \
-            "/root/research-app/venv/bin/pip install --no-index --find-links=/tmp/packages/ flask anthropic && echo PACKAGES_OK"
+            "pip3 install --break-system-packages --no-index --find-links=/tmp/packages/ flask anthropic && echo PACKAGES_OK"
 
       - name: Create directories and write API key
         env:
