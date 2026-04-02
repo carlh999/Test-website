@@ -25,7 +25,7 @@ jobs:
           echo "SSH port is open on ${{ secrets.DO_HOST }}"
 
       - name: Setup server dependencies and config
-        uses: appleboy/ssh-action@v1.2.0
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.DO_HOST }}
           username: root
@@ -94,7 +94,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
       - name: Deploy app files
-        uses: appleboy/scp-action@v0.1.9
+        uses: appleboy/scp-action@v1.0.0
         with:
           host: ${{ secrets.DO_HOST }}
           username: root
@@ -103,7 +103,7 @@ jobs:
           target: /root/research-app/
 
       - name: Restart services and verify
-        uses: appleboy/ssh-action@v1.2.0
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.DO_HOST }}
           username: root
