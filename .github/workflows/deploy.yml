@@ -25,7 +25,7 @@ jobs:
           echo "SSH port is open on ${{ secrets.DO_HOST }}"
 
       - name: Setup server dependencies and config
-        uses: appleboy/ssh-action@v1.2.5
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.DO_HOST }}
           username: root
@@ -104,7 +104,7 @@ jobs:
           target: /root/research-app/
 
       - name: Restart services and verify
-        uses: appleboy/ssh-action@v1.2.5
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.DO_HOST }}
           username: root
@@ -125,7 +125,8 @@ jobs:
         if: failure()
         run: |
           echo "=== SSH Auth Diagnosis ==="
-          SSH_DIAG=$(ssh -v -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 root@${{ secrets.DO_HOST }} "echo ok" 2>&1 || true)
+          sudo apt-get install -y -qq sshpass > /dev/null 2>&1 || true
+          SSH_DIAG=$(sshpass -p "${{ secrets.DO_PASSWORD }}" ssh -v -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@${{ secrets.DO_HOST }} "echo ok" 2>&1 || true)
           echo "$SSH_DIAG"
           echo ""
           echo "=== Offered auth methods ==="
