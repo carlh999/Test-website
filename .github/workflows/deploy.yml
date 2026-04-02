@@ -121,6 +121,29 @@ jobs:
             echo "==> Health check"
             curl -sf http://localhost:5000/ > /dev/null && echo "App responding OK" || echo "WARNING: app not yet responding"
 
+      - name: Diagnose SSH failure
+        if: failure()
+        run: |
+          echo "=== SSH Auth Diagnosis ==="
+          SSH_DIAG=$(ssh -v -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 root@${{ secrets.DO_HOST }} "echo ok" 2>&1 || true)
+          echo "$SSH_DIAG"
+          echo ""
+          echo "=== Offered auth methods ==="
+          echo "$SSH_DIAG" | grep -i "authentications that can continue" || echo "Could not determine auth methods"
+          echo ""
+          echo "=== Connection result ==="
+          echo "$SSH_DIAG" | tail -5
+
+          # Save for issue body
+          AUTH_METHODS=$(echo "$SSH_DIAG" | grep -i "authentications that can continue" | head -1 || echo "unknown")
+          CONN_RESULT=$(echo "$SSH_DIAG" | grep -iE "permission denied|auth|timeout|refused|connected" | tail -3 || echo "unknown")
+          echo "AUTH_METHODS<<EOF" >> $GITHUB_ENV
+          echo "$AUTH_METHODS" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+          echo "CONN_RESULT<<EOF" >> $GITHUB_ENV
+          echo "$CONN_RESULT" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
       - name: Report failure as GitHub Issue
         if: failure()
         env:
@@ -129,9 +152,18 @@ jobs:
           gh issue create \
             --repo "${{ github.repository }}" \
             --title "Deploy failed — $(echo ${{ github.sha }} | cut -c1-7)" \
-            --body "## Deploy Failed
+            --body "$(cat <<ISSUEEOF
+          ## Deploy Failed
 
           **Commit:** \`${{ github.sha }}\`
           **Run logs:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
-          Expand the failing step in the run logs to see the exact error."
+          ### SSH Diagnosis
+          \`\`\`
+          $AUTH_METHODS
+          $CONN_RESULT
+          \`\`\`
+
+          Check if password auth is enabled on the droplet and that DO_HOST / DO_PASSWORD secrets are correct.
+          ISSUEEOF
+          )"
