@@ -55,9 +55,20 @@ RestartSec=3
 WantedBy=multi-user.target
 EOF
 
-# Ensure nginx sites-enabled symlink exists
+# Remove ALL existing nginx site configs to avoid conflicts
+rm -f /etc/nginx/sites-enabled/*
+rm -f /etc/nginx/conf.d/*
+
+# Create symlink for our config
 ln -sf /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
+
+# Verify nginx config
+echo "=== nginx config test ==="
 nginx -t
+echo "=== nginx sites-enabled ==="
+ls -la /etc/nginx/sites-enabled/
+echo "=== nginx config content ==="
+cat /etc/nginx/sites-enabled/default
 
 # Clean up broken venv from earlier attempts
 rm -rf /root/research-app/venv
@@ -69,7 +80,7 @@ systemctl reset-failed research-app 2>/dev/null || true
 # Start services fresh
 systemctl daemon-reload
 systemctl enable research-app
-systemctl reload nginx
+systemctl restart nginx
 systemctl start research-app
 
 # Wait and verify multiple times
