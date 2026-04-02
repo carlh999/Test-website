@@ -29,20 +29,16 @@ jobs:
           ls -la /tmp/packages/
           echo "DOWNLOAD_OK"
 
-      - name: Upload packages to server
+      - name: Upload and install packages on server
         env:
           SSHPASS: ${{ secrets.DO_PASSWORD }}
         run: |
-          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "mkdir -p /root/research-app"
-          sshpass -e scp -o StrictHostKeyChecking=no -r /tmp/packages/ root@${{ secrets.DO_HOST }}:/tmp/packages/
-          echo "UPLOAD_OK"
-
-      - name: Install packages from local files
-        env:
-          SSHPASS: ${{ secrets.DO_PASSWORD }}
-        run: |
+          tar czf /tmp/packages.tar.gz -C /tmp/packages .
+          ls -lh /tmp/packages.tar.gz
+          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "mkdir -p /root/research-app /tmp/packages"
+          sshpass -e scp -o StrictHostKeyChecking=no /tmp/packages.tar.gz root@${{ secrets.DO_HOST }}:/tmp/packages.tar.gz
           sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} \
-            "pip3 install --break-system-packages --no-index --find-links=/tmp/packages/ flask anthropic && echo PACKAGES_OK"
+            "cd /tmp/packages && tar xzf /tmp/packages.tar.gz && pip3 install --break-system-packages --no-index --find-links=/tmp/packages/ flask anthropic && python3 -c 'import flask; print(flask.__version__)' && echo PACKAGES_OK"
 
       - name: Create directories and write API key
         env:
