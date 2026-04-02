@@ -23,21 +23,19 @@ jobs:
           SSHPASS: ${{ secrets.DO_PASSWORD }}
         run: sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "echo SSH_OK && hostname"
 
-      - name: Check server DNS and install Python packages
+      - name: Fix DNS if needed
         env:
           SSHPASS: ${{ secrets.DO_PASSWORD }}
         run: |
-          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} bash -c '
-            echo "==> Testing DNS..."
-            if ! host pypi.org > /dev/null 2>&1 && ! ping -c1 -W3 8.8.8.8 > /dev/null 2>&1; then
-              echo "==> No DNS, fixing resolv.conf..."
-              echo "nameserver 8.8.8.8" > /etc/resolv.conf
-              echo "nameserver 1.1.1.1" >> /etc/resolv.conf
-            fi
-            echo "==> Installing Python packages..."
-            pip3 install --break-system-packages flask anthropic 2>&1
-            echo PACKAGES_OK
-          '
+          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} \
+            "grep -q 8.8.8.8 /etc/resolv.conf || echo 'nameserver 8.8.8.8' >> /etc/resolv.conf"
+
+      - name: Create venv and install Python packages
+        env:
+          SSHPASS: ${{ secrets.DO_PASSWORD }}
+        run: |
+          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} \
+            "python3 -m venv /root/research-app/venv && /root/research-app/venv/bin/pip install flask anthropic && echo PACKAGES_OK"
 
       - name: Create directories and write API key
         env:
