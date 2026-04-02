@@ -60,7 +60,12 @@ systemctl daemon-reload
 systemctl enable research-app
 systemctl restart research-app
 systemctl reload nginx
-sleep 3
+sleep 5
+echo "=== Service status ==="
+systemctl status research-app --no-pager 2>&1 || true
+echo "=== Last 20 journal lines ==="
+journalctl -u research-app --no-pager -n 20 2>&1 || true
+echo "=== Final check ==="
 systemctl is-active research-app
 curl -sf http://localhost:5000/ > /dev/null && echo "SITE IS LIVE" || echo "WARNING: not responding yet"
 echo "=== SETUP COMPLETE ==="
