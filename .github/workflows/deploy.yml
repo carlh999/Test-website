@@ -4,6 +4,9 @@ on:
   push:
     branches: [claude/setup-local-test-website-HYAsM]
 
+permissions:
+  issues: write
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -23,20 +26,21 @@ jobs:
             set -e
             export DEBIAN_FRONTEND=noninteractive
 
-            # Install system packages
+            echo "==> Installing system packages"
             apt-get update -qq
-            apt-get install -y -qq nginx python3 python3-venv python3-pip
+            apt-get install -y -qq nginx python3
 
-            # App directory + virtualenv (avoids Ubuntu 24.04 PEP 668 restriction)
+            echo "==> Installing Python packages"
+            pip3 install --break-system-packages -q flask anthropic
+
+            echo "==> Creating app directories"
             mkdir -p /root/research-app/templates
-            python3 -m venv /root/research-app/venv
-            /root/research-app/venv/bin/pip install -q flask anthropic
 
-            # API key env file (protected)
+            echo "==> Writing API key env file"
             printf 'ANTHROPIC_API_KEY=%s\n' "$ANTHROPIC_API_KEY" > /root/.flask-env
             chmod 600 /root/.flask-env
 
-            # Nginx — proxy to Flask with SSE buffering disabled
+            echo "==> Writing nginx config"
             cat > /etc/nginx/sites-available/default << 'NGINX'
 server {
     listen 80;
@@ -52,7 +56,7 @@ server {
 }
 NGINX
 
-            # Systemd service using venv Python
+            echo "==> Writing systemd service"
             cat > /etc/systemd/system/research-app.service << 'SERVICE'
 [Unit]
 Description=NEXUS Research Agent Flask App
@@ -63,7 +67,7 @@ Type=simple
 User=root
 WorkingDirectory=/root/research-app
 EnvironmentFile=/root/.flask-env
-ExecStart=/root/research-app/venv/bin/python /root/research-app/app.py
+ExecStart=/usr/bin/python3 /root/research-app/app.py
 Restart=always
 RestartSec=3
 
@@ -71,10 +75,12 @@ RestartSec=3
 WantedBy=multi-user.target
 SERVICE
 
+            echo "==> Enabling services"
             systemctl daemon-reload
             systemctl enable research-app
             systemctl enable nginx
-            systemctl start nginx
+            systemctl start nginx || systemctl reload nginx
+            echo "==> Setup complete"
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
@@ -95,8 +101,31 @@ SERVICE
           password: ${{ secrets.DO_PASSWORD }}
           script: |
             set -e
+            echo "==> Restarting Flask app"
             systemctl restart research-app
             sleep 3
+            echo "==> Verifying Flask is active"
             systemctl is-active research-app
+            echo "==> Reloading nginx"
             systemctl reload nginx
-            echo "Deploy complete — app running on port 5000"
+            echo "==> Health check"
+            curl -sf http://localhost:5000/ > /dev/null && echo "App responding OK" || echo "WARNING: app not yet responding"
+
+      - name: Report failure as GitHub Issue
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Deploy failed — ${context.sha.substring(0, 7)}`,
+              body: [
+                '## Deployment Failed',
+                '',
+                `**Commit:** \`${context.sha}\``,
+                `**Logs:** [View full run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`,
+                '',
+                'Expand the failing step in the run logs to see the exact error.',
+              ].join('\n')
+            })
