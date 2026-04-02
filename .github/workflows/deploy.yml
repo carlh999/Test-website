@@ -15,8 +15,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Verify server is reachable
+        run: |
+          echo "Checking connectivity to droplet..."
+          if ! nc -z -w 10 ${{ secrets.DO_HOST }} 22 2>/dev/null; then
+            echo "::error::Cannot reach ${{ secrets.DO_HOST }} on port 22. Is the droplet running? Check DigitalOcean console."
+            exit 1
+          fi
+          echo "SSH port is open on ${{ secrets.DO_HOST }}"
+
       - name: Setup server dependencies and config
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.DO_HOST }}
           username: root
@@ -85,7 +94,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
       - name: Deploy app files
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@v0.1.9
         with:
           host: ${{ secrets.DO_HOST }}
           username: root
@@ -94,7 +103,7 @@ jobs:
           target: /root/research-app/
 
       - name: Restart services and verify
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.DO_HOST }}
           username: root
