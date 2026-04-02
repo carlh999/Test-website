@@ -18,15 +18,14 @@ jobs:
       - name: Install sshpass
         run: sudo apt-get install -y -qq sshpass
 
-      - name: Setup server dependencies and config
+      - name: Write setup script
         env:
-          SSHPASS: ${{ secrets.DO_PASSWORD }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} bash -s "$ANTHROPIC_API_KEY" << 'REMOTE_SCRIPT'
+          cat > /tmp/setup.sh << 'SETUP'
+          #!/bin/bash
           set -e
           export DEBIAN_FRONTEND=noninteractive
-          API_KEY="$1"
 
           echo "==> Installing system packages"
           apt-get update -qq
@@ -39,7 +38,8 @@ jobs:
           mkdir -p /root/research-app/templates
 
           echo "==> Writing API key env file"
-          printf 'ANTHROPIC_API_KEY=%s\n' "$API_KEY" > /root/.flask-env
+          # API key is passed as $1
+          printf 'ANTHROPIC_API_KEY=%s\n' "$1" > /root/.flask-env
           chmod 600 /root/.flask-env
 
           echo "==> Writing nginx config"
@@ -83,7 +83,21 @@ jobs:
           systemctl enable nginx
           systemctl start nginx || systemctl reload nginx
           echo "==> Setup complete"
-          REMOTE_SCRIPT
+          SETUP
+          chmod +x /tmp/setup.sh
+
+      - name: Copy setup script to server
+        env:
+          SSHPASS: ${{ secrets.DO_PASSWORD }}
+        run: |
+          sshpass -e scp -o StrictHostKeyChecking=no /tmp/setup.sh root@${{ secrets.DO_HOST }}:/tmp/setup.sh
+
+      - name: Run setup on server
+        env:
+          SSHPASS: ${{ secrets.DO_PASSWORD }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "bash /tmp/setup.sh '$ANTHROPIC_API_KEY'"
 
       - name: Deploy app files
         env:
@@ -100,18 +114,8 @@ jobs:
         env:
           SSHPASS: ${{ secrets.DO_PASSWORD }}
         run: |
-          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} << 'REMOTE_SCRIPT'
-          set -e
-          echo "==> Restarting Flask app"
-          systemctl restart research-app
-          sleep 3
-          echo "==> Verifying Flask is active"
-          systemctl is-active research-app
-          echo "==> Reloading nginx"
-          systemctl reload nginx
-          echo "==> Health check"
-          curl -sf http://localhost:5000/ > /dev/null && echo "App responding OK" || echo "WARNING: app not yet responding"
-          REMOTE_SCRIPT
+          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} \
+            "set -e; systemctl restart research-app; sleep 3; systemctl is-active research-app; systemctl reload nginx; curl -sf http://localhost:5000/ > /dev/null && echo 'App responding OK' || echo 'WARNING: app not yet responding'"
 
       - name: Report failure as GitHub Issue
         if: failure()
@@ -121,12 +125,9 @@ jobs:
           gh issue create \
             --repo "${{ github.repository }}" \
             --title "Deploy failed — $(echo ${{ github.sha }} | cut -c1-7)" \
-            --body "$(cat <<'ISSUEEOF'
-          ## Deploy Failed
+            --body "## Deploy Failed
 
-          **Commit:** ${{ github.sha }}
+          **Commit:** \`${{ github.sha }}\`
           **Run logs:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
-          Check the failing step in the run logs for the exact error.
-          ISSUEEOF
-          )"
+          Check the failing step in the run logs for the exact error."
