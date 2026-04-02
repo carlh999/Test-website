@@ -32,6 +32,7 @@ jobs:
         env:
           SSHPASS: ${{ secrets.DO_PASSWORD }}
         run: |
+          set -o pipefail
           sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "chmod +x /tmp/setup.sh && /tmp/setup.sh '${{ secrets.ANTHROPIC_API_KEY }}'" 2>&1 | tee /tmp/setup-output.txt
 
       - name: Report failure
