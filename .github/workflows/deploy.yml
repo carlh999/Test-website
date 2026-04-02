@@ -54,64 +54,67 @@ jobs:
           sshpass -e scp -o StrictHostKeyChecking=no deploy/research-app.service root@${{ secrets.DO_HOST }}:/etc/systemd/system/research-app.service
           echo DEPLOY_OK
 
-      - name: Pre-flight check
-        env:
-          SSHPASS: ${{ secrets.DO_PASSWORD }}
-        run: |
-          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} bash -c '
-            echo "==> Checking app.py exists..."
-            ls -la /root/research-app/app.py
-            echo "==> Checking templates..."
-            ls -la /root/research-app/templates/
-            echo "==> Checking .flask-env..."
-            test -f /root/.flask-env && echo ".flask-env exists" || echo ".flask-env MISSING"
-            echo "==> Testing flask import..."
-            python3 -c "import flask; print(\"flask OK:\", flask.__version__)"
-            echo "==> Testing anthropic import..."
-            python3 -c "import anthropic; print(\"anthropic OK:\", anthropic.__version__)"
-            echo "==> Test running app for 2 seconds..."
-            cd /root/research-app && timeout 2 python3 app.py 2>&1 || true
-            echo "==> PRE-FLIGHT DONE"
-          '
-
       - name: Start services
         env:
           SSHPASS: ${{ secrets.DO_PASSWORD }}
         run: |
-          DIAG=$(sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} bash -c '
+          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} bash -c '
             systemctl daemon-reload
             systemctl enable research-app
-            systemctl restart research-app || true
+            systemctl restart research-app
             systemctl reload nginx
             sleep 3
-            echo "=== Service status ==="
-            systemctl status research-app --no-pager 2>&1 || true
-            echo "=== Recent logs ==="
-            journalctl -u research-app --no-pager -n 30 2>&1 || true
-            echo "=== Checking if active ==="
             systemctl is-active research-app
-          ' 2>&1)
-          echo "$DIAG"
-          echo "SERVICE_DIAG<<EOF" >> $GITHUB_ENV
-          echo "$DIAG" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
+          '
 
       - name: Health check
         env:
           SSHPASS: ${{ secrets.DO_PASSWORD }}
         run: sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "curl -sf http://localhost:5000/ > /dev/null && echo SITE_IS_LIVE || echo Site_not_responding_yet"
 
+      - name: Collect service diagnostics
+        if: failure()
+        env:
+          SSHPASS: ${{ secrets.DO_PASSWORD }}
+        run: |
+          set +e
+          DIAG=$(sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} bash -c '
+            echo "=== cat /root/.flask-env (redacted) ==="
+            test -f /root/.flask-env && echo "exists, $(wc -c < /root/.flask-env) bytes" || echo "MISSING"
+            echo "=== cat /etc/systemd/system/research-app.service ==="
+            cat /etc/systemd/system/research-app.service
+            echo "=== ls /root/research-app/ ==="
+            ls -la /root/research-app/
+            echo "=== python3 -c import flask ==="
+            python3 -c "import flask; print(flask.__version__)" 2>&1
+            echo "=== python3 -c import anthropic ==="
+            python3 -c "import anthropic; print(anthropic.__version__)" 2>&1
+            echo "=== systemctl status research-app ==="
+            systemctl status research-app --no-pager 2>&1
+            echo "=== journalctl -u research-app -n 40 ==="
+            journalctl -u research-app --no-pager -n 40 2>&1
+            echo "=== Manual test run ==="
+            cd /root/research-app && timeout 3 python3 app.py 2>&1
+          ' 2>&1) || true
+          echo "$DIAG"
+          echo "SERVICE_DIAG<<DIAGEOF" >> $GITHUB_ENV
+          echo "$DIAG" >> $GITHUB_ENV
+          echo "DIAGEOF" >> $GITHUB_ENV
+
       - name: Report failure
         if: failure()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          BODY="Deploy failed for commit ${{ github.sha }}.
-          Run logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
-          Service diagnostics:
-          $SERVICE_DIAG"
           gh issue create \
             --repo "${{ github.repository }}" \
-            --title "Deploy failed — $(echo ${{ github.sha }} | cut -c1-7)" \
-            --body "$BODY"
+            --title "Deploy diag — $(echo ${{ github.sha }} | cut -c1-7)" \
+            --body "$(cat <<ISSUEEOF
+          Commit: ${{ github.sha }}
+          Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          \`\`\`
+          ${SERVICE_DIAG}
+          \`\`\`
+          ISSUEEOF
+          )"
