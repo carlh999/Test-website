@@ -32,4 +32,15 @@ jobs:
         env:
           SSHPASS: ${{ secrets.DO_PASSWORD }}
         run: |
-          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "chmod +x /tmp/setup.sh && /tmp/setup.sh '${{ secrets.ANTHROPIC_API_KEY }}'"
+          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "chmod +x /tmp/setup.sh && /tmp/setup.sh '${{ secrets.ANTHROPIC_API_KEY }}'" 2>&1 | tee /tmp/setup-output.txt
+
+      - name: Report failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          BODY=$(tail -80 /tmp/setup-output.txt 2>/dev/null || echo "no output captured")
+          gh issue create \
+            --repo "${{ github.repository }}" \
+            --title "Deploy log — $(echo ${{ github.sha }} | cut -c1-7)" \
+            --body "$(printf '```\n%s\n```' "$BODY")" || true

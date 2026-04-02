@@ -1,9 +1,13 @@
 #!/bin/bash
 set -ex
 
-# Fix DNS
+# Fix DNS — Ubuntu 24.04 uses systemd-resolved symlink
+systemctl disable --now systemd-resolved 2>/dev/null || true
+rm -f /etc/resolv.conf
 echo "nameserver 8.8.8.8" > /etc/resolv.conf
 echo "nameserver 1.1.1.1" >> /etc/resolv.conf
+echo "==> DNS test:"
+ping -c1 -W5 pypi.org || { echo "DNS FAILED"; cat /etc/resolv.conf; exit 1; }
 
 # Install packages
 pip3 install --break-system-packages flask anthropic
