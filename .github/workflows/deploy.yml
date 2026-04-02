@@ -41,3 +41,26 @@ jobs:
           username: root
           password: ${{ secrets.DO_PASSWORD }}
           script: systemctl reload nginx
+
+      - name: Install Anthropic SDK and run Claude API test
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DO_HOST }}
+          username: root
+          password: ${{ secrets.DO_PASSWORD }}
+          envs: ANTHROPIC_API_KEY
+          script: |
+            pip3 install -q anthropic
+            cat > /root/test_claude.py << 'EOF'
+            import anthropic, os
+            client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+            message = client.messages.create(
+                model="claude-opus-4-6",
+                max_tokens=256,
+                messages=[{"role": "user", "content": "Say hello and introduce yourself in 2 sentences."}]
+            )
+            print(message.content[0].text)
+            EOF
+            python3 /root/test_claude.py | tee /root/claude_test_output.txt
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
