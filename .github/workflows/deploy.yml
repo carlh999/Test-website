@@ -121,7 +121,7 @@ jobs:
             --title "Deploy failed — $(echo ${{ github.sha }} | cut -c1-7)" \
             --body "## Deploy Failed
 
-**Commit:** \`${{ github.sha }}\`
-**Run logs:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          **Commit:** \`${{ github.sha }}\`
+          **Run logs:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
-Expand the failing step in the run logs to see the exact error."
+          Expand the failing step in the run logs to see the exact error."
