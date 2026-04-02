@@ -55,6 +55,10 @@ RestartSec=3
 WantedBy=multi-user.target
 EOF
 
+# Ensure nginx sites-enabled symlink exists
+ln -sf /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
+nginx -t
+
 # Clean up broken venv from earlier attempts
 rm -rf /root/research-app/venv
 
