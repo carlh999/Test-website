@@ -2,7 +2,7 @@ name: Deploy to DigitalOcean
 
 on:
   push:
-    branches: [claude/setup-local-test-website-HYAsM, claude/fix-deploy-yaml-syntax-RaWmm]
+    branches: ['claude/*']
 
 permissions:
   issues: write

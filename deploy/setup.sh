@@ -1,15 +1,21 @@
 #!/bin/bash
 set -ex
 
-# Fix DNS
+# Fix DNS — Ubuntu 24.04 systemd-resolved breaks resolv.conf
 systemctl disable --now systemd-resolved 2>/dev/null || true
 rm -f /etc/resolv.conf
 echo "nameserver 8.8.8.8" > /etc/resolv.conf
 echo "nameserver 1.1.1.1" >> /etc/resolv.conf
 ping -c1 -W5 pypi.org || { echo "DNS FAILED"; exit 1; }
 
-# Install packages
-pip3 install --break-system-packages --ignore-installed flask anthropic
+# Install packages (skip if already present)
+if python3 -c "import flask; import anthropic" 2>/dev/null; then
+  echo "==> Python packages already installed, skipping pip"
+else
+  pip3 install --break-system-packages --ignore-installed flask anthropic
+fi
+python3 -c "import flask; print('flask', flask.__version__)"
+python3 -c "import anthropic; print('anthropic', anthropic.__version__)"
 
 # Write API key
 echo "ANTHROPIC_API_KEY=$1" > /root/.flask-env
