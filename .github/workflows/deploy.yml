@@ -23,10 +23,10 @@ jobs:
           SSHPASS: ${{ secrets.DO_PASSWORD }}
         run: sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "echo SSH_OK && hostname"
 
-      - name: Install packages on server
+      - name: Install Python packages on server
         env:
           SSHPASS: ${{ secrets.DO_PASSWORD }}
-        run: sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "export DEBIAN_FRONTEND=noninteractive && apt-get update -qq && apt-get install -y -qq nginx python3 python3-pip && pip3 install --break-system-packages -q flask anthropic && echo PACKAGES_OK"
+        run: sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "pip3 install --break-system-packages -q flask anthropic && echo PACKAGES_OK"
 
       - name: Create directories and write API key
         env:
