@@ -55,17 +55,32 @@ RestartSec=3
 WantedBy=multi-user.target
 EOF
 
-# Start services
+# Clean up broken venv from earlier attempts
+rm -rf /root/research-app/venv
+
+# Reset systemd state (previous crash-loops hit rate limit)
+systemctl stop research-app 2>/dev/null || true
+systemctl reset-failed research-app 2>/dev/null || true
+
+# Start services fresh
 systemctl daemon-reload
 systemctl enable research-app
-systemctl restart research-app
 systemctl reload nginx
-sleep 5
+systemctl start research-app
+
+# Wait and verify multiple times
+for i in 1 2 3; do
+  sleep 3
+  echo "==> Check $i:"
+  systemctl is-active research-app && echo "ACTIVE" || echo "FAILED"
+done
+
 echo "=== Service status ==="
 systemctl status research-app --no-pager 2>&1 || true
 echo "=== Last 20 journal lines ==="
 journalctl -u research-app --no-pager -n 20 2>&1 || true
-echo "=== Final check ==="
+
+# Final verification
 systemctl is-active research-app
-curl -sf http://localhost:5000/ > /dev/null && echo "SITE IS LIVE" || echo "WARNING: not responding yet"
+curl -sf http://localhost:5000/ > /dev/null && echo "SITE IS LIVE" || { echo "NOT RESPONDING"; exit 1; }
 echo "=== SETUP COMPLETE ==="
