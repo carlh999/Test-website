@@ -18,106 +18,89 @@ jobs:
       - name: Install sshpass
         run: sudo apt-get install -y -qq sshpass
 
-      - name: Write setup script
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: |
-          cat > /tmp/setup.sh << 'SETUP'
-          #!/bin/bash
-          set -e
-          export DEBIAN_FRONTEND=noninteractive
-
-          echo "==> Installing system packages"
-          apt-get update -qq
-          apt-get install -y -qq nginx python3 python3-pip
-
-          echo "==> Installing Python packages"
-          pip3 install --break-system-packages -q flask anthropic
-
-          echo "==> Creating app directories"
-          mkdir -p /root/research-app/templates
-
-          echo "==> Writing API key env file"
-          # API key is passed as $1
-          printf 'ANTHROPIC_API_KEY=%s\n' "$1" > /root/.flask-env
-          chmod 600 /root/.flask-env
-
-          echo "==> Writing nginx config"
-          cat > /etc/nginx/sites-available/default << 'NGINX'
-          server {
-              listen 80;
-              location / {
-                  proxy_pass http://127.0.0.1:5000;
-                  proxy_set_header Host $host;
-                  proxy_set_header X-Real-IP $remote_addr;
-                  proxy_http_version 1.1;
-                  proxy_buffering off;
-                  proxy_cache off;
-                  add_header X-Accel-Buffering no;
-              }
-          }
-          NGINX
-
-          echo "==> Writing systemd service"
-          cat > /etc/systemd/system/research-app.service << 'SERVICE'
-          [Unit]
-          Description=NEXUS Research Agent Flask App
-          After=network.target
-
-          [Service]
-          Type=simple
-          User=root
-          WorkingDirectory=/root/research-app
-          EnvironmentFile=/root/.flask-env
-          ExecStart=/usr/bin/python3 /root/research-app/app.py
-          Restart=always
-          RestartSec=3
-
-          [Install]
-          WantedBy=multi-user.target
-          SERVICE
-
-          echo "==> Enabling services"
-          systemctl daemon-reload
-          systemctl enable research-app
-          systemctl enable nginx
-          systemctl start nginx || systemctl reload nginx
-          echo "==> Setup complete"
-          SETUP
-          chmod +x /tmp/setup.sh
-
-      - name: Copy setup script to server
+      - name: Test SSH connection
         env:
           SSHPASS: ${{ secrets.DO_PASSWORD }}
         run: |
-          sshpass -e scp -o StrictHostKeyChecking=no /tmp/setup.sh root@${{ secrets.DO_HOST }}:/tmp/setup.sh
+          sshpass -e ssh -v -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "echo 'SSH_OK' && hostname && whoami" 2>&1
 
-      - name: Run setup on server
+      - name: Install packages on server
+        env:
+          SSHPASS: ${{ secrets.DO_PASSWORD }}
+        run: |
+          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "export DEBIAN_FRONTEND=noninteractive && apt-get update -qq && apt-get install -y -qq nginx python3 python3-pip && pip3 install --break-system-packages -q flask anthropic && echo PACKAGES_OK"
+
+      - name: Create directories and write API key
         env:
           SSHPASS: ${{ secrets.DO_PASSWORD }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "bash /tmp/setup.sh '$ANTHROPIC_API_KEY'"
+          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "mkdir -p /root/research-app/templates && printf 'ANTHROPIC_API_KEY=%s\n' '${{ secrets.ANTHROPIC_API_KEY }}' > /root/.flask-env && chmod 600 /root/.flask-env && echo DIRS_OK"
+
+      - name: Write nginx config
+        env:
+          SSHPASS: ${{ secrets.DO_PASSWORD }}
+        run: |
+          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} 'cat > /etc/nginx/sites-available/default << NGINX
+server {
+    listen 80;
+    location / {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_http_version 1.1;
+        proxy_buffering off;
+        proxy_cache off;
+        add_header X-Accel-Buffering no;
+    }
+}
+NGINX
+echo NGINX_OK'
+
+      - name: Write systemd service
+        env:
+          SSHPASS: ${{ secrets.DO_PASSWORD }}
+        run: |
+          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} 'cat > /etc/systemd/system/research-app.service << SERVICE
+[Unit]
+Description=NEXUS Research Agent Flask App
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/research-app
+EnvironmentFile=/root/.flask-env
+ExecStart=/usr/bin/python3 /root/research-app/app.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+SERVICE
+echo SERVICE_OK'
 
       - name: Deploy app files
         env:
           SSHPASS: ${{ secrets.DO_PASSWORD }}
         run: |
-          sshpass -e scp -o StrictHostKeyChecking=no \
-            app.py requirements.txt \
-            root@${{ secrets.DO_HOST }}:/root/research-app/
-          sshpass -e scp -o StrictHostKeyChecking=no -r \
-            templates/ \
-            root@${{ secrets.DO_HOST }}:/root/research-app/templates/
+          sshpass -e scp -o StrictHostKeyChecking=no app.py requirements.txt root@${{ secrets.DO_HOST }}:/root/research-app/
+          sshpass -e scp -o StrictHostKeyChecking=no -r templates/ root@${{ secrets.DO_HOST }}:/root/research-app/templates/
+          echo DEPLOY_OK
 
-      - name: Restart services and verify
+      - name: Start services
         env:
           SSHPASS: ${{ secrets.DO_PASSWORD }}
         run: |
-          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} \
-            "set -e; systemctl restart research-app; sleep 3; systemctl is-active research-app; systemctl reload nginx; curl -sf http://localhost:5000/ > /dev/null && echo 'App responding OK' || echo 'WARNING: app not yet responding'"
+          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "systemctl daemon-reload && systemctl enable research-app && systemctl restart research-app && systemctl reload nginx && sleep 3 && systemctl is-active research-app && echo SERVICES_OK"
 
-      - name: Report failure as GitHub Issue
+      - name: Health check
+        env:
+          SSHPASS: ${{ secrets.DO_PASSWORD }}
+        run: |
+          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "curl -sf http://localhost:5000/ > /dev/null && echo 'SITE IS LIVE' || echo 'Site not responding yet'"
+
+      - name: Report failure
         if: failure()
         env:
           GH_TOKEN: ${{ github.token }}
@@ -125,9 +108,4 @@ jobs:
           gh issue create \
             --repo "${{ github.repository }}" \
             --title "Deploy failed — $(echo ${{ github.sha }} | cut -c1-7)" \
-            --body "## Deploy Failed
-
-          **Commit:** \`${{ github.sha }}\`
-          **Run logs:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
-          Check the failing step in the run logs for the exact error."
+            --body "Deploy failed. Check run logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
