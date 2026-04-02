@@ -23,24 +23,39 @@ jobs:
           SSHPASS: ${{ secrets.DO_PASSWORD }}
         run: sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "echo SSH_OK && hostname"
 
-      - name: Fix DNS if needed
-        env:
-          SSHPASS: ${{ secrets.DO_PASSWORD }}
+      - name: Download Python packages on runner
         run: |
-          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} \
-            "grep -q 8.8.8.8 /etc/resolv.conf || echo 'nameserver 8.8.8.8' >> /etc/resolv.conf"
+          pip download flask anthropic -d /tmp/packages/
+          ls -la /tmp/packages/
+          echo "DOWNLOAD_OK"
 
-      - name: Create venv and install Python packages
+      - name: Create venv on server
         env:
           SSHPASS: ${{ secrets.DO_PASSWORD }}
         run: |
           sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} \
-            "python3 -m venv /root/research-app/venv && /root/research-app/venv/bin/pip install flask anthropic && echo PACKAGES_OK"
+            "mkdir -p /root/research-app && python3 -m venv /root/research-app/venv && echo VENV_OK"
+
+      - name: Upload packages to server
+        env:
+          SSHPASS: ${{ secrets.DO_PASSWORD }}
+        run: |
+          sshpass -e scp -o StrictHostKeyChecking=no -r /tmp/packages/ root@${{ secrets.DO_HOST }}:/tmp/packages/
+          echo "UPLOAD_OK"
+
+      - name: Install packages from local files
+        env:
+          SSHPASS: ${{ secrets.DO_PASSWORD }}
+        run: |
+          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} \
+            "/root/research-app/venv/bin/pip install --no-index --find-links=/tmp/packages/ flask anthropic && echo PACKAGES_OK"
 
       - name: Create directories and write API key
         env:
           SSHPASS: ${{ secrets.DO_PASSWORD }}
-        run: sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "mkdir -p /root/research-app/templates && echo 'ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}' > /root/.flask-env && chmod 600 /root/.flask-env && echo DIRS_OK"
+        run: |
+          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} \
+            "mkdir -p /root/research-app/templates && echo 'ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}' > /root/.flask-env && chmod 600 /root/.flask-env && echo DIRS_OK"
 
       - name: Deploy app files and configs
         env:
@@ -56,63 +71,28 @@ jobs:
         env:
           SSHPASS: ${{ secrets.DO_PASSWORD }}
         run: |
-          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} bash -c '
-            systemctl daemon-reload
-            systemctl enable research-app
-            systemctl restart research-app
-            systemctl reload nginx
-            sleep 3
-            systemctl is-active research-app
-          '
+          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} \
+            "systemctl daemon-reload && systemctl enable research-app && systemctl restart research-app && systemctl reload nginx && sleep 3 && systemctl is-active research-app && echo SERVICES_OK"
 
       - name: Health check
         env:
           SSHPASS: ${{ secrets.DO_PASSWORD }}
-        run: sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "curl -sf http://localhost:5000/ > /dev/null && echo SITE_IS_LIVE || echo Site_not_responding_yet"
-
-      - name: Collect service diagnostics
-        if: failure()
-        env:
-          SSHPASS: ${{ secrets.DO_PASSWORD }}
         run: |
-          set +e
-          DIAG=$(sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} bash -c '
-            echo "=== cat /root/.flask-env (redacted) ==="
-            test -f /root/.flask-env && echo "exists, $(wc -c < /root/.flask-env) bytes" || echo "MISSING"
-            echo "=== cat /etc/systemd/system/research-app.service ==="
-            cat /etc/systemd/system/research-app.service
-            echo "=== ls /root/research-app/ ==="
-            ls -la /root/research-app/
-            echo "=== python3 -c import flask ==="
-            python3 -c "import flask; print(flask.__version__)" 2>&1
-            echo "=== python3 -c import anthropic ==="
-            python3 -c "import anthropic; print(anthropic.__version__)" 2>&1
-            echo "=== systemctl status research-app ==="
-            systemctl status research-app --no-pager 2>&1
-            echo "=== journalctl -u research-app -n 40 ==="
-            journalctl -u research-app --no-pager -n 40 2>&1
-            echo "=== Manual test run ==="
-            cd /root/research-app && timeout 3 python3 app.py 2>&1
-          ' 2>&1) || true
-          echo "$DIAG"
-          echo "SERVICE_DIAG<<DIAGEOF" >> $GITHUB_ENV
-          echo "$DIAG" >> $GITHUB_ENV
-          echo "DIAGEOF" >> $GITHUB_ENV
+          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} \
+            "curl -sf http://localhost:5000/ > /dev/null && echo SITE_IS_LIVE || echo Site_not_responding_yet"
 
       - name: Report failure
         if: failure()
         env:
           GH_TOKEN: ${{ github.token }}
+          SSHPASS: ${{ secrets.DO_PASSWORD }}
         run: |
+          set +e
+          DIAG=$(sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} \
+            "echo '=== service ===' && cat /etc/systemd/system/research-app.service && echo '=== ls ===' && ls -la /root/research-app/ && echo '=== venv pip list ===' && /root/research-app/venv/bin/pip list 2>&1 && echo '=== status ===' && systemctl status research-app --no-pager 2>&1 && echo '=== journal ===' && journalctl -u research-app --no-pager -n 20 2>&1" 2>&1) || true
+          echo "$DIAG"
           gh issue create \
             --repo "${{ github.repository }}" \
             --title "Deploy diag — $(echo ${{ github.sha }} | cut -c1-7)" \
-            --body "$(cat <<ISSUEEOF
-          Commit: ${{ github.sha }}
-          Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
-          \`\`\`
-          ${SERVICE_DIAG}
-          \`\`\`
-          ISSUEEOF
-          )"
+            --body "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          ${DIAG}" || true
