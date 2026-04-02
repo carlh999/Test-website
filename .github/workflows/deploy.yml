@@ -15,135 +15,103 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Verify server is reachable
-        run: |
-          echo "Checking connectivity to droplet..."
-          if ! nc -z -w 10 ${{ secrets.DO_HOST }} 22 2>/dev/null; then
-            echo "::error::Cannot reach ${{ secrets.DO_HOST }} on port 22. Is the droplet running? Check DigitalOcean console."
-            exit 1
-          fi
-          echo "SSH port is open on ${{ secrets.DO_HOST }}"
+      - name: Install sshpass
+        run: sudo apt-get install -y -qq sshpass
 
       - name: Setup server dependencies and config
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.DO_HOST }}
-          username: root
-          password: ${{ secrets.DO_PASSWORD }}
-          debug: true
-          envs: ANTHROPIC_API_KEY
-          script: |
-            set -e
-            export DEBIAN_FRONTEND=noninteractive
-
-            echo "==> Installing system packages"
-            apt-get update -qq
-            apt-get install -y -qq nginx python3 python3-pip
-
-            echo "==> Installing Python packages"
-            pip3 install --break-system-packages -q flask anthropic
-
-            echo "==> Creating app directories"
-            mkdir -p /root/research-app/templates
-
-            echo "==> Writing API key env file"
-            printf 'ANTHROPIC_API_KEY=%s\n' "$ANTHROPIC_API_KEY" > /root/.flask-env
-            chmod 600 /root/.flask-env
-
-            echo "==> Writing nginx config"
-            cat > /etc/nginx/sites-available/default << 'NGINX'
-            server {
-                listen 80;
-                location / {
-                    proxy_pass http://127.0.0.1:5000;
-                    proxy_set_header Host $host;
-                    proxy_set_header X-Real-IP $remote_addr;
-                    proxy_http_version 1.1;
-                    proxy_buffering off;
-                    proxy_cache off;
-                    add_header X-Accel-Buffering no;
-                }
-            }
-            NGINX
-
-            echo "==> Writing systemd service"
-            cat > /etc/systemd/system/research-app.service << 'SERVICE'
-            [Unit]
-            Description=NEXUS Research Agent Flask App
-            After=network.target
-
-            [Service]
-            Type=simple
-            User=root
-            WorkingDirectory=/root/research-app
-            EnvironmentFile=/root/.flask-env
-            ExecStart=/usr/bin/python3 /root/research-app/app.py
-            Restart=always
-            RestartSec=3
-
-            [Install]
-            WantedBy=multi-user.target
-            SERVICE
-
-            echo "==> Enabling services"
-            systemctl daemon-reload
-            systemctl enable research-app
-            systemctl enable nginx
-            systemctl start nginx || systemctl reload nginx
-            echo "==> Setup complete"
         env:
+          SSHPASS: ${{ secrets.DO_PASSWORD }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} bash -s "$ANTHROPIC_API_KEY" << 'REMOTE_SCRIPT'
+          set -e
+          export DEBIAN_FRONTEND=noninteractive
+          API_KEY="$1"
+
+          echo "==> Installing system packages"
+          apt-get update -qq
+          apt-get install -y -qq nginx python3 python3-pip
+
+          echo "==> Installing Python packages"
+          pip3 install --break-system-packages -q flask anthropic
+
+          echo "==> Creating app directories"
+          mkdir -p /root/research-app/templates
+
+          echo "==> Writing API key env file"
+          printf 'ANTHROPIC_API_KEY=%s\n' "$API_KEY" > /root/.flask-env
+          chmod 600 /root/.flask-env
+
+          echo "==> Writing nginx config"
+          cat > /etc/nginx/sites-available/default << 'NGINX'
+          server {
+              listen 80;
+              location / {
+                  proxy_pass http://127.0.0.1:5000;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_http_version 1.1;
+                  proxy_buffering off;
+                  proxy_cache off;
+                  add_header X-Accel-Buffering no;
+              }
+          }
+          NGINX
+
+          echo "==> Writing systemd service"
+          cat > /etc/systemd/system/research-app.service << 'SERVICE'
+          [Unit]
+          Description=NEXUS Research Agent Flask App
+          After=network.target
+
+          [Service]
+          Type=simple
+          User=root
+          WorkingDirectory=/root/research-app
+          EnvironmentFile=/root/.flask-env
+          ExecStart=/usr/bin/python3 /root/research-app/app.py
+          Restart=always
+          RestartSec=3
+
+          [Install]
+          WantedBy=multi-user.target
+          SERVICE
+
+          echo "==> Enabling services"
+          systemctl daemon-reload
+          systemctl enable research-app
+          systemctl enable nginx
+          systemctl start nginx || systemctl reload nginx
+          echo "==> Setup complete"
+          REMOTE_SCRIPT
 
       - name: Deploy app files
-        uses: appleboy/scp-action@v1.0.0
-        with:
-          host: ${{ secrets.DO_HOST }}
-          username: root
-          password: ${{ secrets.DO_PASSWORD }}
-          source: "app.py,templates,requirements.txt"
-          target: /root/research-app/
+        env:
+          SSHPASS: ${{ secrets.DO_PASSWORD }}
+        run: |
+          sshpass -e scp -o StrictHostKeyChecking=no \
+            app.py requirements.txt \
+            root@${{ secrets.DO_HOST }}:/root/research-app/
+          sshpass -e scp -o StrictHostKeyChecking=no -r \
+            templates/ \
+            root@${{ secrets.DO_HOST }}:/root/research-app/templates/
 
       - name: Restart services and verify
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.DO_HOST }}
-          username: root
-          password: ${{ secrets.DO_PASSWORD }}
-          script: |
-            set -e
-            echo "==> Restarting Flask app"
-            systemctl restart research-app
-            sleep 3
-            echo "==> Verifying Flask is active"
-            systemctl is-active research-app
-            echo "==> Reloading nginx"
-            systemctl reload nginx
-            echo "==> Health check"
-            curl -sf http://localhost:5000/ > /dev/null && echo "App responding OK" || echo "WARNING: app not yet responding"
-
-      - name: Diagnose SSH failure
-        if: failure()
+        env:
+          SSHPASS: ${{ secrets.DO_PASSWORD }}
         run: |
-          echo "=== SSH Auth Diagnosis ==="
-          sudo apt-get install -y -qq sshpass > /dev/null 2>&1 || true
-          SSH_DIAG=$(sshpass -p "${{ secrets.DO_PASSWORD }}" ssh -v -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@${{ secrets.DO_HOST }} "echo ok" 2>&1 || true)
-          echo "$SSH_DIAG"
-          echo ""
-          echo "=== Offered auth methods ==="
-          echo "$SSH_DIAG" | grep -i "authentications that can continue" || echo "Could not determine auth methods"
-          echo ""
-          echo "=== Connection result ==="
-          echo "$SSH_DIAG" | tail -5
-
-          # Save for issue body
-          AUTH_METHODS=$(echo "$SSH_DIAG" | grep -i "authentications that can continue" | head -1 || echo "unknown")
-          CONN_RESULT=$(echo "$SSH_DIAG" | grep -iE "permission denied|auth|timeout|refused|connected" | tail -3 || echo "unknown")
-          echo "AUTH_METHODS<<EOF" >> $GITHUB_ENV
-          echo "$AUTH_METHODS" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
-          echo "CONN_RESULT<<EOF" >> $GITHUB_ENV
-          echo "$CONN_RESULT" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
+          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} << 'REMOTE_SCRIPT'
+          set -e
+          echo "==> Restarting Flask app"
+          systemctl restart research-app
+          sleep 3
+          echo "==> Verifying Flask is active"
+          systemctl is-active research-app
+          echo "==> Reloading nginx"
+          systemctl reload nginx
+          echo "==> Health check"
+          curl -sf http://localhost:5000/ > /dev/null && echo "App responding OK" || echo "WARNING: app not yet responding"
+          REMOTE_SCRIPT
 
       - name: Report failure as GitHub Issue
         if: failure()
@@ -153,18 +121,12 @@ jobs:
           gh issue create \
             --repo "${{ github.repository }}" \
             --title "Deploy failed — $(echo ${{ github.sha }} | cut -c1-7)" \
-            --body "$(cat <<ISSUEEOF
+            --body "$(cat <<'ISSUEEOF'
           ## Deploy Failed
 
-          **Commit:** \`${{ github.sha }}\`
+          **Commit:** ${{ github.sha }}
           **Run logs:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
-          ### SSH Diagnosis
-          \`\`\`
-          $AUTH_METHODS
-          $CONN_RESULT
-          \`\`\`
-
-          Check if password auth is enabled on the droplet and that DO_HOST / DO_PASSWORD secrets are correct.
+          Check the failing step in the run logs for the exact error.
           ISSUEEOF
           )"
