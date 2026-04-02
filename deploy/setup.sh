@@ -9,7 +9,7 @@ echo "nameserver 1.1.1.1" >> /etc/resolv.conf
 ping -c1 -W5 pypi.org || { echo "DNS FAILED"; exit 1; }
 
 # Install packages
-pip3 install --break-system-packages flask anthropic
+pip3 install --break-system-packages --ignore-installed flask anthropic
 
 # Write API key
 echo "ANTHROPIC_API_KEY=$1" > /root/.flask-env
