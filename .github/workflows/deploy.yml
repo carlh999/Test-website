@@ -30,6 +30,7 @@ jobs:
           host: ${{ secrets.DO_HOST }}
           username: root
           password: ${{ secrets.DO_PASSWORD }}
+          debug: true
           envs: ANTHROPIC_API_KEY
           script: |
             set -e
