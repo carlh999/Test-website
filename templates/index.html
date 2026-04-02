@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NEXUS — AI Research Terminal</title>
+  <style>
+    :root {
+      --bg:      #05050e;
+      --panel:   #0b0b1a;
+      --border:  #1a1a30;
+      --cyan:    #00f0ff;
+      --purple:  #b060ff;
+      --green:   #00ff88;
+      --gold:    #ffd060;
+      --red:     #ff4d6d;
+      --text:    #c0c8e0;
+      --muted:   #3a4060;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'SF Mono', 'Fira Code', 'Courier New', monospace;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    /* ── Header ── */
+    header {
+      width: 100%;
+      padding: 2.5rem 1.5rem 2rem;
+      text-align: center;
+      border-bottom: 1px solid var(--border);
+      position: relative;
+    }
+
+    .logo {
+      font-size: clamp(2rem, 8vw, 3.5rem);
+      font-weight: 700;
+      letter-spacing: 0.45em;
+      color: var(--cyan);
+      text-shadow: 0 0 30px rgba(0,240,255,0.5), 0 0 60px rgba(0,240,255,0.2);
+    }
+
+    .tagline {
+      margin-top: 0.5rem;
+      font-size: 0.7rem;
+      letter-spacing: 0.3em;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+
+    .version {
+      position: absolute;
+      top: 1rem;
+      right: 1.5rem;
+      font-size: 0.65rem;
+      color: var(--muted);
+      letter-spacing: 0.1em;
+    }
+
+    /* ── Main ── */
+    main {
+      width: 100%;
+      max-width: 780px;
+      padding: 3rem 1.5rem 4rem;
+    }
+
+    /* ── Search ── */
+    .prompt-label {
+      font-size: 0.7rem;
+      letter-spacing: 0.25em;
+      color: var(--muted);
+      margin-bottom: 0.6rem;
+      text-transform: uppercase;
+    }
+
+    .input-row {
+      display: flex;
+      gap: 0.75rem;
+      align-items: stretch;
+    }
+
+    input[type="text"] {
+      flex: 1;
+      padding: 0.85rem 1.2rem;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 1rem;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    input[type="text"]::placeholder { color: var(--muted); }
+
+    input[type="text"]:focus {
+      border-color: var(--cyan);
+      box-shadow: 0 0 24px rgba(0,240,255,0.12);
+    }
+
+    button#btn {
+      padding: 0 1.5rem;
+      background: transparent;
+      border: 1px solid var(--cyan);
+      border-radius: 3px;
+      color: var(--cyan);
+      font-family: inherit;
+      font-size: 0.75rem;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.2s, box-shadow 0.2s;
+    }
+
+    button#btn:hover:not(:disabled) {
+      background: rgba(0,240,255,0.08);
+      box-shadow: 0 0 20px rgba(0,240,255,0.2);
+    }
+
+    button#btn:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+
+    /* ── Status bar ── */
+    #statusbar {
+      display: none;
+      align-items: center;
+      gap: 0.75rem;
+      margin-top: 1.5rem;
+      font-size: 0.7rem;
+      letter-spacing: 0.2em;
+      color: var(--cyan);
+      text-transform: uppercase;
+    }
+
+    #statusbar.active { display: flex; }
+
+    .pulse-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--cyan);
+      box-shadow: 0 0 8px var(--cyan);
+      animation: pulse-dot 1s ease-in-out infinite;
+    }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: 0.4; transform: scale(0.6); }
+    }
+
+    /* ── Output ── */
+    #output-wrap {
+      display: none;
+      margin-top: 1.5rem;
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    #output-wrap.active { display: block; }
+
+    .output-header {
+      padding: 0.6rem 1.2rem;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      font-size: 0.65rem;
+      letter-spacing: 0.2em;
+      color: var(--muted);
+      text-transform: uppercase;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    #output {
+      padding: 1.5rem 1.5rem 2rem;
+      background: var(--bg);
+      line-height: 1.85;
+      font-size: 0.88rem;
+      min-height: 120px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    /* ── Formatted sections (applied post-stream) ── */
+    .section-what   { color: var(--cyan);   font-weight: bold; }
+    .section-why    { color: var(--purple);  font-weight: bold; }
+    .section-who    { color: var(--gold);    font-weight: bold; }
+    .section-watch  { color: var(--green);   font-weight: bold; }
+    .bullet-mark    { color: var(--muted); }
+
+    /* ── Cursor ── */
+    .cursor {
+      display: inline-block;
+      width: 8px; height: 1em;
+      background: var(--cyan);
+      margin-left: 2px;
+      vertical-align: text-bottom;
+      animation: blink-cursor 0.8s step-end infinite;
+    }
+
+    @keyframes blink-cursor {
+      50% { opacity: 0; }
+    }
+
+    /* ── Error ── */
+    .error-text { color: var(--red); }
+
+    /* ── Footer ── */
+    footer {
+      margin-top: auto;
+      padding: 1.5rem;
+      font-size: 0.65rem;
+      color: var(--muted);
+      letter-spacing: 0.15em;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="version">v2.0 / OPUS-4.6</div>
+  <div class="logo">NEXUS</div>
+  <div class="tagline">AI &amp; Tech Trends Intelligence Terminal</div>
+</header>
+
+<main>
+  <div class="prompt-label">// Enter research topic</div>
+  <div class="input-row">
+    <input type="text" id="topic" placeholder="e.g. agentic AI, MCP protocol, LLM inference..." autocomplete="off" />
+    <button id="btn" onclick="research()">Run</button>
+  </div>
+
+  <div id="statusbar">
+    <div class="pulse-dot"></div>
+    <span>Scanning signal — claude-opus-4-6</span>
+  </div>
+
+  <div id="output-wrap">
+    <div class="output-header">
+      <span>RESEARCH OUTPUT</span>
+      <span id="topic-display"></span>
+    </div>
+    <div id="output"></div>
+  </div>
+</main>
+
+<footer>NEXUS RESEARCH TERMINAL &mdash; POWERED BY CLAUDE OPUS 4.6</footer>
+
+<script>
+  const SECTIONS = [
+    { re: /(\*\*What it is\*\*|What it is\s*—|What it is:)/gi,  cls: 'section-what'  },
+    { re: /(\*\*Why it matters\*\*|Why it matters\s*—|Why it matters:)/gi, cls: 'section-why'   },
+    { re: /(\*\*Key players\*\*|Key players\s*—|Key players:)/gi,  cls: 'section-who'   },
+    { re: /(\*\*What to watch\*\*|What to watch\s*—|What to watch:)/gi, cls: 'section-watch' },
+  ];
+
+  function escapeHtml(t) {
+    return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function format(raw) {
+    let t = escapeHtml(raw);
+    SECTIONS.forEach(({ re, cls }) => {
+      t = t.replace(re, m => `<span class="${cls}">${m}</span>`);
+    });
+    // Bold **text**
+    t = t.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    // Dim bullet dashes
+    t = t.replace(/^(\s*[-•])/gm, '<span class="bullet-mark">$1</span>');
+    return t;
+  }
+
+  async function research() {
+    const topicEl = document.getElementById('topic');
+    const topic   = topicEl.value.trim();
+    if (!topic) { topicEl.focus(); return; }
+
+    const btn      = document.getElementById('btn');
+    const statusbar = document.getElementById('statusbar');
+    const wrap     = document.getElementById('output-wrap');
+    const output   = document.getElementById('output');
+    const topicDisp = document.getElementById('topic-display');
+
+    btn.disabled = true;
+    statusbar.className = 'active';
+    wrap.className = 'active';
+    topicDisp.textContent = topic.toUpperCase();
+    output.innerHTML = '<span class="cursor"></span>';
+
+    let buffer = '';
+    let sseBuffer = '';
+
+    try {
+      const resp = await fetch('/research', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic }),
+      });
+
+      const reader  = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let done = false;
+
+      while (!done) {
+        const { value, done: streamDone } = await reader.read();
+        done = streamDone;
+        if (value) {
+          sseBuffer += decoder.decode(value, { stream: true });
+          const lines = sseBuffer.split('\n');
+          sseBuffer = lines.pop();
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const payload = line.slice(6);
+            if (payload === '[DONE]') { done = true; break; }
+            try {
+              const obj = JSON.parse(payload);
+              if (obj.error) throw new Error(obj.error);
+              buffer += obj.text;
+              output.innerHTML = escapeHtml(buffer) + '<span class="cursor"></span>';
+            } catch (e) {
+              output.innerHTML = `<span class="error-text">Error: ${escapeHtml(e.message)}</span>`;
+              done = true;
+              break;
+            }
+          }
+        }
+      }
+
+      // Final formatted render
+      output.innerHTML = format(buffer);
+
+    } catch (e) {
+      output.innerHTML = `<span class="error-text">Connection error: ${escapeHtml(e.message)}</span>`;
+    }
+
+    statusbar.className = '';
+    btn.disabled = false;
+  }
+
+  document.getElementById('topic').addEventListener('keydown', e => {
+    if (e.key === 'Enter') research();
+  });
+</script>
+
+</body>
+</html>

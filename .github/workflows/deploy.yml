@@ -12,37 +12,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install nginx on droplet
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.DO_HOST }}
-          username: root
-          password: ${{ secrets.DO_PASSWORD }}
-          script: |
-            export DEBIAN_FRONTEND=noninteractive
-            apt-get update -qq
-            apt-get install -y -qq nginx
-            systemctl enable nginx
-            systemctl start nginx
-
-      - name: Copy site to droplet
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.DO_HOST }}
-          username: root
-          password: ${{ secrets.DO_PASSWORD }}
-          source: "index.html"
-          target: /var/www/html/
-
-      - name: Reload nginx
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.DO_HOST }}
-          username: root
-          password: ${{ secrets.DO_PASSWORD }}
-          script: systemctl reload nginx
-
-      - name: Install Anthropic SDK and run Claude API test
+      - name: Setup server dependencies and config
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.DO_HOST }}
@@ -50,17 +20,74 @@ jobs:
           password: ${{ secrets.DO_PASSWORD }}
           envs: ANTHROPIC_API_KEY
           script: |
-            pip3 install -q anthropic
-            cat > /root/test_claude.py << 'EOF'
-            import anthropic, os
-            client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-            message = client.messages.create(
-                model="claude-opus-4-6",
-                max_tokens=256,
-                messages=[{"role": "user", "content": "Say hello and introduce yourself in 2 sentences."}]
-            )
-            print(message.content[0].text)
-            EOF
-            python3 /root/test_claude.py | tee /root/claude_test_output.txt
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -qq
+            apt-get install -y -qq nginx python3-pip
+            pip3 install -q flask anthropic
+
+            # App directory
+            mkdir -p /root/research-app/templates
+
+            # API key env file (protected)
+            echo "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY" > /root/.flask-env
+            chmod 600 /root/.flask-env
+
+            # Nginx — proxy to Flask with SSE buffering off
+            cat > /etc/nginx/sites-available/default << 'NGINX'
+            server {
+                listen 80;
+                location / {
+                    proxy_pass http://127.0.0.1:5000;
+                    proxy_set_header Host $host;
+                    proxy_set_header X-Real-IP $remote_addr;
+                    proxy_buffering off;
+                    proxy_cache off;
+                    add_header X-Accel-Buffering no;
+                }
+            }
+            NGINX
+
+            # Systemd service for Flask
+            cat > /etc/systemd/system/research-app.service << 'SERVICE'
+            [Unit]
+            Description=NEXUS Research Agent Flask App
+            After=network.target
+
+            [Service]
+            Type=simple
+            User=root
+            WorkingDirectory=/root/research-app
+            EnvironmentFile=/root/.flask-env
+            ExecStart=/usr/bin/python3 /root/research-app/app.py
+            Restart=always
+            RestartSec=3
+
+            [Install]
+            WantedBy=multi-user.target
+            SERVICE
+
+            systemctl daemon-reload
+            systemctl enable research-app
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - name: Deploy app files
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DO_HOST }}
+          username: root
+          password: ${{ secrets.DO_PASSWORD }}
+          source: "app.py,templates/,requirements.txt"
+          target: /root/research-app/
+
+      - name: Restart services
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DO_HOST }}
+          username: root
+          password: ${{ secrets.DO_PASSWORD }}
+          script: |
+            systemctl restart research-app
+            sleep 2
+            systemctl reload nginx
+            systemctl is-active research-app
