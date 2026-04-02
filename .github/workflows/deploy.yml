@@ -57,7 +57,20 @@ jobs:
       - name: Start services
         env:
           SSHPASS: ${{ secrets.DO_PASSWORD }}
-        run: sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "systemctl daemon-reload && systemctl enable research-app && systemctl restart research-app && systemctl reload nginx && sleep 3 && systemctl is-active research-app && echo SERVICES_OK"
+        run: |
+          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} bash -c '
+            systemctl daemon-reload
+            systemctl enable research-app
+            systemctl restart research-app || true
+            systemctl reload nginx
+            sleep 3
+            echo "=== Service status ==="
+            systemctl status research-app --no-pager || true
+            echo "=== Recent logs ==="
+            journalctl -u research-app --no-pager -n 30 || true
+            echo "=== Checking if active ==="
+            systemctl is-active research-app
+          '
 
       - name: Health check
         env:
