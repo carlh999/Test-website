@@ -23,29 +23,33 @@ jobs:
           SSHPASS: ${{ secrets.DO_PASSWORD }}
         run: sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "echo SSH_OK && hostname"
 
-      - name: Download Python packages on runner
-        run: |
-          pip download flask anthropic -d /tmp/packages/
-          ls -la /tmp/packages/
-          echo "DOWNLOAD_OK"
-
-      - name: Upload and install packages on server
+      - name: Fix DNS and install Python packages
         env:
           SSHPASS: ${{ secrets.DO_PASSWORD }}
         run: |
-          tar czf /tmp/packages.tar.gz -C /tmp/packages .
-          ls -lh /tmp/packages.tar.gz
-          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "mkdir -p /root/research-app /tmp/packages"
-          sshpass -e scp -o StrictHostKeyChecking=no /tmp/packages.tar.gz root@${{ secrets.DO_HOST }}:/tmp/packages.tar.gz
-          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} \
-            "cd /tmp/packages && tar xzf /tmp/packages.tar.gz && pip3 install --break-system-packages --no-index --find-links=/tmp/packages/ flask anthropic && python3 -c 'import flask; print(flask.__version__)' && echo PACKAGES_OK"
+          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "
+            echo 'nameserver 8.8.8.8' > /etc/resolv.conf
+            echo 'nameserver 1.1.1.1' >> /etc/resolv.conf
+            echo '==> Testing DNS...'
+            ping -c1 -W5 pypi.org && echo 'DNS OK' || echo 'DNS still broken'
+            echo '==> Installing packages...'
+            pip3 install --break-system-packages flask anthropic
+            echo '==> Verifying...'
+            python3 -c 'import flask; print(flask.__version__)'
+            python3 -c 'import anthropic; print(anthropic.__version__)'
+            echo PACKAGES_OK
+          "
 
       - name: Create directories and write API key
         env:
           SSHPASS: ${{ secrets.DO_PASSWORD }}
         run: |
-          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} \
-            "mkdir -p /root/research-app/templates && echo 'ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}' > /root/.flask-env && chmod 600 /root/.flask-env && echo DIRS_OK"
+          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "
+            mkdir -p /root/research-app/templates
+            echo 'ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}' > /root/.flask-env
+            chmod 600 /root/.flask-env
+            echo DIRS_OK
+          "
 
       - name: Deploy app files and configs
         env:
@@ -61,8 +65,15 @@ jobs:
         env:
           SSHPASS: ${{ secrets.DO_PASSWORD }}
         run: |
-          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} \
-            "systemctl daemon-reload && systemctl enable research-app && systemctl restart research-app && systemctl reload nginx && sleep 3 && systemctl is-active research-app && echo SERVICES_OK"
+          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "
+            systemctl daemon-reload
+            systemctl enable research-app
+            systemctl restart research-app
+            systemctl reload nginx
+            sleep 3
+            systemctl is-active research-app
+            echo SERVICES_OK
+          "
 
       - name: Health check
         env:
@@ -78,8 +89,17 @@ jobs:
           SSHPASS: ${{ secrets.DO_PASSWORD }}
         run: |
           set +e
-          DIAG=$(sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} \
-            "echo '=== service ===' && cat /etc/systemd/system/research-app.service && echo '=== ls ===' && ls -la /root/research-app/ && echo '=== venv pip list ===' && /root/research-app/venv/bin/pip list 2>&1 && echo '=== status ===' && systemctl status research-app --no-pager 2>&1 && echo '=== journal ===' && journalctl -u research-app --no-pager -n 20 2>&1" 2>&1) || true
+          DIAG=$(sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "
+            echo '=== pip list ==='
+            pip3 list 2>&1 | grep -iE 'flask|anthropic' || echo 'not installed'
+            echo '=== service ==='
+            systemctl status research-app --no-pager 2>&1
+            echo '=== journal ==='
+            journalctl -u research-app --no-pager -n 20 2>&1
+            echo '=== dns ==='
+            cat /etc/resolv.conf 2>&1
+            ping -c1 -W3 pypi.org 2>&1 || echo 'DNS broken'
+          " 2>&1) || true
           echo "$DIAG"
           gh issue create \
             --repo "${{ github.repository }}" \
