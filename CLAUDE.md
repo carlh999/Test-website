@@ -4,7 +4,7 @@
 
 - All deployments must go through GitHub Actions only. No manual deployments.
 - Never SSH directly into the server. All server interactions must be via GitHub Actions workflows.
-- Droplet IP is stored in GitHub secret `DO_HOST` (currently 159.89.231.0).
+- Droplet IP is stored in GitHub secret `DO_HOST` (currently 159.203.69.34).
 
 ## Secrets & Access
 
