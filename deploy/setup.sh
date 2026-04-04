@@ -8,6 +8,9 @@ echo "nameserver 8.8.8.8" > /etc/resolv.conf
 echo "nameserver 1.1.1.1" >> /etc/resolv.conf
 ping -c1 -W5 pypi.org || { echo "DNS FAILED"; exit 1; }
 
+# Ensure pip is installed
+apt-get update -qq && apt-get install -y -qq python3-pip
+
 # Install packages (skip if already present)
 if python3 -c "import flask; import anthropic" 2>/dev/null; then
   echo "==> Python packages already installed, skipping pip"
