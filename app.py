@@ -5,7 +5,7 @@ import json
 
 app = Flask(__name__)
 
-SYSTEM_PROMPT = (
+NEXUS_PROMPT = (
     "You are an AI and tech trends research agent. When given a topic, you research it "
     "and return a concise bullet summary. Always structure your response as: "
     "What it is — one sentence explanation. "
@@ -16,25 +16,28 @@ SYSTEM_PROMPT = (
     "Focus on practical implications for someone building an AI business."
 )
 
-@app.route("/")
-def index():
-    return render_template("index.html")
+SCOUT_PROMPT = (
+    "You are SCOUT, a competitive intelligence agent. You receive a research brief about a topic "
+    "and your job is to analyze the competitive landscape. Always structure your response as: "
+    "Who is building — 3-5 bullets naming specific companies/products in this space with one-line descriptions. "
+    "What they charge — 3-5 bullets on pricing models, tiers, and revenue strategies you know about. "
+    "Where the gap is — 3-5 bullets identifying underserved niches, missing features, or market opportunities. "
+    "Keep each bullet under 20 words. Be specific — name real companies and real prices where possible. "
+    "If you don't know exact pricing, say so and estimate the range. "
+    "Focus on actionable intelligence for someone looking to compete or enter this market."
+)
 
-@app.route("/research", methods=["POST"])
-def research():
-    data = request.get_json()
-    topic = (data or {}).get("topic", "").strip()
-    if not topic:
-        return {"error": "No topic provided"}, 400
 
+def _stream_agent(system_prompt, user_message):
+    """Stream a response from Claude with the given system prompt."""
     def generate():
         try:
             client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
             with client.messages.stream(
                 model="claude-sonnet-4-6",
                 max_tokens=1024,
-                system=SYSTEM_PROMPT,
-                messages=[{"role": "user", "content": f"Research this topic: {topic}"}],
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_message}],
             ) as stream:
                 for text in stream.text_stream:
                     yield f"data: {json.dumps({'text': text})}\n\n"
@@ -47,6 +50,36 @@ def research():
         mimetype="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@app.route("/")
+def index():
+    return render_template("index.html")
+
+
+@app.route("/research", methods=["POST"])
+def research():
+    data = request.get_json()
+    topic = (data or {}).get("topic", "").strip()
+    if not topic:
+        return {"error": "No topic provided"}, 400
+    return _stream_agent(NEXUS_PROMPT, f"Research this topic: {topic}")
+
+
+@app.route("/scout", methods=["POST"])
+def scout():
+    data = request.get_json()
+    topic = (data or {}).get("topic", "").strip()
+    nexus_brief = (data or {}).get("nexus_brief", "").strip()
+    if not topic:
+        return {"error": "No topic provided"}, 400
+    user_message = (
+        f"Topic: {topic}\n\n"
+        f"Here is the NEXUS research brief on this topic:\n\n{nexus_brief}\n\n"
+        f"Now provide your competitive intelligence analysis."
+    )
+    return _stream_agent(SCOUT_PROMPT, user_message)
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=80, debug=False)

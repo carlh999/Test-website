@@ -16,6 +16,11 @@
       --red:     #ff4d6d;
       --text:    #c0c8e0;
       --muted:   #3a4060;
+      /* SCOUT theme */
+      --orange:  #ff8c00;
+      --amber:   #ffb340;
+      --rust:    #e06030;
+      --peach:   #ffa07a;
     }
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -131,26 +136,36 @@
       cursor: not-allowed;
     }
 
-    /* ── Status bar ── */
-    #statusbar {
+    /* ── Status bars ── */
+    .statusbar {
       display: none;
       align-items: center;
       gap: 0.75rem;
       margin-top: 1.5rem;
       font-size: 0.7rem;
       letter-spacing: 0.2em;
-      color: var(--cyan);
       text-transform: uppercase;
     }
 
-    #statusbar.active { display: flex; }
+    .statusbar.active { display: flex; }
+
+    #nexus-status { color: var(--cyan); }
+    #scout-status { color: var(--orange); }
 
     .pulse-dot {
       width: 7px; height: 7px;
       border-radius: 50%;
+      animation: pulse-dot 1s ease-in-out infinite;
+    }
+
+    .pulse-dot.cyan {
       background: var(--cyan);
       box-shadow: 0 0 8px var(--cyan);
-      animation: pulse-dot 1s ease-in-out infinite;
+    }
+
+    .pulse-dot.orange {
+      background: var(--orange);
+      box-shadow: 0 0 8px var(--orange);
     }
 
     @keyframes pulse-dot {
@@ -158,18 +173,22 @@
       50%       { opacity: 0.4; transform: scale(0.6); }
     }
 
-    /* ── Output ── */
-    #output-wrap {
+    /* ── Output panels ── */
+    .output-wrap {
       display: none;
       margin-top: 1.5rem;
-      border: 1px solid var(--border);
       border-radius: 3px;
       overflow: hidden;
     }
 
-    #output-wrap.active { display: block; }
+    .output-wrap.active { display: block; }
 
-    .output-header {
+    /* NEXUS panel */
+    #nexus-wrap {
+      border: 1px solid var(--border);
+    }
+
+    #nexus-wrap .output-header {
       padding: 0.6rem 1.2rem;
       background: var(--panel);
       border-bottom: 1px solid var(--border);
@@ -181,7 +200,25 @@
       justify-content: space-between;
     }
 
-    #output {
+    /* SCOUT panel */
+    #scout-wrap {
+      border: 1px solid rgba(255,140,0,0.25);
+      margin-top: 2rem;
+    }
+
+    #scout-wrap .output-header {
+      padding: 0.6rem 1.2rem;
+      background: rgba(255,140,0,0.06);
+      border-bottom: 1px solid rgba(255,140,0,0.25);
+      font-size: 0.65rem;
+      letter-spacing: 0.2em;
+      color: var(--orange);
+      text-transform: uppercase;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .output-content {
       padding: 1.5rem 1.5rem 2rem;
       background: var(--bg);
       line-height: 1.85;
@@ -191,22 +228,30 @@
       word-break: break-word;
     }
 
-    /* ── Formatted sections (applied post-stream) ── */
+    /* ── NEXUS section colours ── */
     .section-what   { color: var(--cyan);   font-weight: bold; }
     .section-why    { color: var(--purple);  font-weight: bold; }
     .section-who    { color: var(--gold);    font-weight: bold; }
     .section-watch  { color: var(--green);   font-weight: bold; }
+
+    /* ── SCOUT section colours ── */
+    .scout-building { color: var(--orange);  font-weight: bold; }
+    .scout-charge   { color: var(--amber);   font-weight: bold; }
+    .scout-gap      { color: var(--peach);   font-weight: bold; }
+
     .bullet-mark    { color: var(--muted); }
 
-    /* ── Cursor ── */
+    /* ── Cursors ── */
     .cursor {
       display: inline-block;
       width: 8px; height: 1em;
-      background: var(--cyan);
       margin-left: 2px;
       vertical-align: text-bottom;
       animation: blink-cursor 0.8s step-end infinite;
     }
+
+    .cursor.cyan   { background: var(--cyan); }
+    .cursor.orange { background: var(--orange); }
 
     @keyframes blink-cursor {
       50% { opacity: 0; }
@@ -214,6 +259,36 @@
 
     /* ── Error ── */
     .error-text { color: var(--red); }
+
+    /* ── Divider ── */
+    .agent-divider {
+      display: none;
+      margin-top: 2.5rem;
+      text-align: center;
+      position: relative;
+    }
+
+    .agent-divider.active { display: block; }
+
+    .agent-divider::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255,140,0,0.3), transparent);
+    }
+
+    .agent-divider span {
+      position: relative;
+      background: var(--bg);
+      padding: 0 1rem;
+      font-size: 0.6rem;
+      letter-spacing: 0.3em;
+      color: var(--orange);
+      text-transform: uppercase;
+    }
 
     /* ── Footer ── */
     footer {
@@ -229,7 +304,7 @@
 <body>
 
 <header>
-  <div class="version">v2.0 / SONNET-4.6</div>
+  <div class="version">v3.0 / SONNET-4.6</div>
   <div class="logo">NEXUS</div>
   <div class="tagline">AI &amp; Tech Trends Intelligence Terminal</div>
 </header>
@@ -241,111 +316,181 @@
     <button id="btn" onclick="research()">Run</button>
   </div>
 
-  <div id="statusbar">
-    <div class="pulse-dot"></div>
-    <span>Scanning signal — claude-sonnet-4-6</span>
+  <!-- NEXUS -->
+  <div id="nexus-status" class="statusbar">
+    <div class="pulse-dot cyan"></div>
+    <span>NEXUS scanning — claude-sonnet-4-6</span>
   </div>
 
-  <div id="output-wrap">
+  <div id="nexus-wrap" class="output-wrap">
     <div class="output-header">
-      <span>RESEARCH OUTPUT</span>
+      <span>NEXUS — RESEARCH OUTPUT</span>
       <span id="topic-display"></span>
     </div>
-    <div id="output"></div>
+    <div id="nexus-output" class="output-content"></div>
+  </div>
+
+  <!-- Divider -->
+  <div id="agent-divider" class="agent-divider">
+    <span>SCOUT — Competitive Intelligence</span>
+  </div>
+
+  <!-- SCOUT -->
+  <div id="scout-status" class="statusbar">
+    <div class="pulse-dot orange"></div>
+    <span>SCOUT analysing competitive landscape</span>
+  </div>
+
+  <div id="scout-wrap" class="output-wrap">
+    <div class="output-header">
+      <span>SCOUT — COMPETITIVE INTEL</span>
+      <span id="scout-topic-display"></span>
+    </div>
+    <div id="scout-output" class="output-content"></div>
   </div>
 </main>
 
-<footer>NEXUS RESEARCH TERMINAL &mdash; POWERED BY CLAUDE SONNET 4.6</footer>
+<footer>NEXUS + SCOUT INTELLIGENCE TERMINAL &mdash; POWERED BY CLAUDE SONNET 4.6</footer>
 
 <script>
-  const SECTIONS = [
+  /* ── Formatters ── */
+
+  const NEXUS_SECTIONS = [
     { re: /(\*\*What it is\*\*|What it is\s*—|What it is:)/gi,  cls: 'section-what'  },
     { re: /(\*\*Why it matters\*\*|Why it matters\s*—|Why it matters:)/gi, cls: 'section-why'   },
     { re: /(\*\*Key players\*\*|Key players\s*—|Key players:)/gi,  cls: 'section-who'   },
     { re: /(\*\*What to watch\*\*|What to watch\s*—|What to watch:)/gi, cls: 'section-watch' },
   ];
 
+  const SCOUT_SECTIONS = [
+    { re: /(\*\*Who is building\*\*|Who is building\s*—|Who is building:)/gi, cls: 'scout-building' },
+    { re: /(\*\*What they charge\*\*|What they charge\s*—|What they charge:)/gi, cls: 'scout-charge' },
+    { re: /(\*\*Where the gap is\*\*|Where the gap is\s*—|Where the gap is:)/gi, cls: 'scout-gap' },
+  ];
+
   function escapeHtml(t) {
     return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
-  function format(raw) {
+  function formatText(raw, sections) {
     let t = escapeHtml(raw);
-    SECTIONS.forEach(({ re, cls }) => {
+    sections.forEach(({ re, cls }) => {
       t = t.replace(re, m => `<span class="${cls}">${m}</span>`);
     });
-    // Bold **text**
     t = t.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-    // Dim bullet dashes
     t = t.replace(/^(\s*[-•])/gm, '<span class="bullet-mark">$1</span>');
     return t;
   }
+
+  /* ── SSE Stream reader ── */
+
+  async function streamSSE(url, body, outputEl, cursorClass, onChunk) {
+    let buffer = '';
+    let sseBuffer = '';
+
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    const reader  = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let done = false;
+
+    while (!done) {
+      const { value, done: streamDone } = await reader.read();
+      done = streamDone;
+      if (value) {
+        sseBuffer += decoder.decode(value, { stream: true });
+        const lines = sseBuffer.split('\n');
+        sseBuffer = lines.pop();
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const payload = line.slice(6);
+          if (payload === '[DONE]') { done = true; break; }
+          try {
+            const obj = JSON.parse(payload);
+            if (obj.error) throw new Error(obj.error);
+            buffer += obj.text;
+            outputEl.innerHTML = escapeHtml(buffer) + `<span class="cursor ${cursorClass}"></span>`;
+            if (onChunk) onChunk(buffer);
+          } catch (e) {
+            outputEl.innerHTML = `<span class="error-text">Error: ${escapeHtml(e.message)}</span>`;
+            return null;
+          }
+        }
+      }
+    }
+    return buffer;
+  }
+
+  /* ── Main flow ── */
 
   async function research() {
     const topicEl = document.getElementById('topic');
     const topic   = topicEl.value.trim();
     if (!topic) { topicEl.focus(); return; }
 
-    const btn      = document.getElementById('btn');
-    const statusbar = document.getElementById('statusbar');
-    const wrap     = document.getElementById('output-wrap');
-    const output   = document.getElementById('output');
-    const topicDisp = document.getElementById('topic-display');
-
+    const btn = document.getElementById('btn');
     btn.disabled = true;
-    statusbar.className = 'active';
-    wrap.className = 'active';
-    topicDisp.textContent = topic.toUpperCase();
-    output.innerHTML = '<span class="cursor"></span>';
 
-    let buffer = '';
-    let sseBuffer = '';
+    // Reset all panels
+    const nexusStatus = document.getElementById('nexus-status');
+    const nexusWrap   = document.getElementById('nexus-wrap');
+    const nexusOutput = document.getElementById('nexus-output');
+    const topicDisp   = document.getElementById('topic-display');
+    const divider     = document.getElementById('agent-divider');
+    const scoutStatus = document.getElementById('scout-status');
+    const scoutWrap   = document.getElementById('scout-wrap');
+    const scoutOutput = document.getElementById('scout-output');
+    const scoutTopic  = document.getElementById('scout-topic-display');
+
+    divider.className = 'agent-divider';
+    scoutStatus.className = 'statusbar';
+    scoutWrap.className = 'output-wrap';
+    scoutOutput.innerHTML = '';
+
+    // ── NEXUS phase ──
+    nexusStatus.className = 'statusbar active';
+    nexusWrap.className = 'output-wrap active';
+    topicDisp.textContent = topic.toUpperCase();
+    nexusOutput.innerHTML = '<span class="cursor cyan"></span>';
+
+    let nexusBrief = null;
 
     try {
-      const resp = await fetch('/research', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic }),
-      });
-
-      const reader  = resp.body.getReader();
-      const decoder = new TextDecoder();
-      let done = false;
-
-      while (!done) {
-        const { value, done: streamDone } = await reader.read();
-        done = streamDone;
-        if (value) {
-          sseBuffer += decoder.decode(value, { stream: true });
-          const lines = sseBuffer.split('\n');
-          sseBuffer = lines.pop();
-
-          for (const line of lines) {
-            if (!line.startsWith('data: ')) continue;
-            const payload = line.slice(6);
-            if (payload === '[DONE]') { done = true; break; }
-            try {
-              const obj = JSON.parse(payload);
-              if (obj.error) throw new Error(obj.error);
-              buffer += obj.text;
-              output.innerHTML = escapeHtml(buffer) + '<span class="cursor"></span>';
-            } catch (e) {
-              output.innerHTML = `<span class="error-text">Error: ${escapeHtml(e.message)}</span>`;
-              done = true;
-              break;
-            }
-          }
-        }
+      nexusBrief = await streamSSE('/research', { topic }, nexusOutput, 'cyan');
+      if (nexusBrief) {
+        nexusOutput.innerHTML = formatText(nexusBrief, NEXUS_SECTIONS);
       }
-
-      // Final formatted render
-      output.innerHTML = format(buffer);
-
     } catch (e) {
-      output.innerHTML = `<span class="error-text">Connection error: ${escapeHtml(e.message)}</span>`;
+      nexusOutput.innerHTML = `<span class="error-text">Connection error: ${escapeHtml(e.message)}</span>`;
     }
 
-    statusbar.className = '';
+    nexusStatus.className = 'statusbar';
+
+    // ── SCOUT phase (auto-triggered) ──
+    if (nexusBrief) {
+      divider.className = 'agent-divider active';
+      scoutStatus.className = 'statusbar active';
+      scoutWrap.className = 'output-wrap active';
+      scoutTopic.textContent = topic.toUpperCase();
+      scoutOutput.innerHTML = '<span class="cursor orange"></span>';
+
+      try {
+        const scoutResult = await streamSSE('/scout', { topic, nexus_brief: nexusBrief }, scoutOutput, 'orange');
+        if (scoutResult) {
+          scoutOutput.innerHTML = formatText(scoutResult, SCOUT_SECTIONS);
+        }
+      } catch (e) {
+        scoutOutput.innerHTML = `<span class="error-text">Connection error: ${escapeHtml(e.message)}</span>`;
+      }
+
+      scoutStatus.className = 'statusbar';
+    }
+
     btn.disabled = false;
   }
 
