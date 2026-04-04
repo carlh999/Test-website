@@ -18,9 +18,10 @@ These are for the TEST droplet only. Rotate before any real use.
 When creating a fresh droplet, these are the known issues:
 
 1. **DNS is broken out of the box** — `systemd-resolved` manages `/etc/resolv.conf` as a symlink. Fix: disable it, create a real file with `8.8.8.8` / `1.1.1.1`.
-2. **pip can't upgrade system packages** — Debian-managed packages (e.g. `typing-extensions`) have no RECORD file. Use `pip3 install --break-system-packages --ignore-installed`.
-3. **No nginx needed** — Flask serves port 80 directly. Stop and disable nginx if pre-installed.
-4. **PermitRootLogin** — Must be `yes` in `/etc/ssh/sshd_config` for the deploy workflow to SSH in.
+2. **pip3 not installed** — Fresh droplets may not have pip. Run `apt-get install -y python3-pip` first.
+3. **pip can't upgrade system packages** — Debian-managed packages (e.g. `typing-extensions`) have no RECORD file. Use `pip3 install --break-system-packages --ignore-installed`.
+4. **No nginx needed** — Flask serves port 80 directly. Stop and disable nginx if pre-installed.
+5. **PermitRootLogin** — Must be `yes` in `/etc/ssh/sshd_config` for the deploy workflow to SSH in.
 
 ## CI/CD Rules
 
