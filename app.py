@@ -16,6 +16,19 @@ NEXUS_PROMPT = (
     "Focus on practical implications for someone building an AI business."
 )
 
+TRIAGE_PROMPT = (
+    "You are a market signal analyst. You receive a research brief and must decide whether "
+    "the topic shows strong enough market signals to warrant competitive intelligence analysis. "
+    "Evaluate the brief for: active development and investment, growing market demand, "
+    "multiple players competing, and clear monetization potential. "
+    "Respond with ONLY a JSON object, nothing else: "
+    '{"run_scout": true, "reason": "one sentence why"} or '
+    '{"run_scout": false, "reason": "one sentence why"}. '
+    "Run scout if: strong market signals, active development, growing investment, emerging opportunity. "
+    "Skip scout if: weak signals, declining interest, saturated/dead market, purely academic topic, "
+    "or the topic is too vague to analyse competitively."
+)
+
 SCOUT_PROMPT = (
     "You are SCOUT, a competitive intelligence agent. You receive a research brief about a topic "
     "and your job is to analyze the competitive landscape. Always structure your response as: "
@@ -64,6 +77,29 @@ def research():
     if not topic:
         return {"error": "No topic provided"}, 400
     return _stream_agent(NEXUS_PROMPT, f"Research this topic: {topic}")
+
+
+@app.route("/triage", methods=["POST"])
+def triage():
+    data = request.get_json()
+    topic = (data or {}).get("topic", "").strip()
+    nexus_brief = (data or {}).get("nexus_brief", "").strip()
+    if not topic or not nexus_brief:
+        return {"error": "Missing topic or brief"}, 400
+
+    try:
+        client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+        resp = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=128,
+            system=TRIAGE_PROMPT,
+            messages=[{"role": "user", "content": f"Topic: {topic}\n\nBrief:\n{nexus_brief}"}],
+        )
+        text = resp.content[0].text.strip()
+        return json.loads(text)
+    except Exception as e:
+        # If triage fails, default to running scout
+        return {"run_scout": True, "reason": f"Triage error: {str(e)}"}
 
 
 @app.route("/scout", methods=["POST"])
