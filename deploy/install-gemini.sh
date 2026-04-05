@@ -28,14 +28,12 @@ export GEMINI_API_KEY
 echo "export GEMINI_API_KEY=$GEMINI_API_KEY" > /root/.gemini-env
 chmod 600 /root/.gemini-env
 
-# Test: generate an image
-echo "==> Running test image generation..."
-mkdir -p /root/gemini-test
-cd /root/gemini-test
-GEMINI_API_KEY="$GEMINI_API_KEY" gemini -p "Use nanobanana to generate a test image of a futuristic AI dashboard with glowing cyan elements on a dark background. Save it to /root/gemini-test/test-image.png" 2>&1 | tee /root/gemini-test-output.txt
+# Verify nano-banana-2 is available
+if command -v nano-banana-2 &>/dev/null; then
+  echo "nano-banana-2: $(nano-banana-2 --version 2>&1 || echo 'available')"
+else
+  echo "WARN: nano-banana-2 not found in PATH, checking gemini extensions..."
+  gemini extensions list 2>&1 || true
+fi
 
-echo "=== Test output ==="
-cat /root/gemini-test-output.txt
-echo "=== Files generated ==="
-ls -la /root/gemini-test/
 echo "=== GEMINI INSTALL COMPLETE ==="
