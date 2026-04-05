@@ -49,7 +49,7 @@ jobs:
           SSHPASS: ${{ secrets.DO_PASSWORD }}
         run: |
           set -o pipefail
-          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} bash -s << 'SCRIPT'
+          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} bash -s 2>&1 | tee /tmp/nanob-output.txt << 'SCRIPT'
           set -ex
           mkdir -p /root/research-app/static
 
@@ -65,8 +65,14 @@ jobs:
             --prompt "Dark futuristic AI terminal background, deep black with subtle cyan grid lines forming a perspective grid, glowing cyan data nodes scattered across the grid intersections, faint blue-cyan light traces connecting nodes, dark sci-fi aesthetic, no text, seamless tileable pattern, 1920x1080" \
             --output /root/research-app/static/nexus-bg.png \
             --width 1920 --height 1080
+
           ls -la /root/research-app/static/nexus-bg.png
           echo "=== BACKGROUND IMAGE GENERATED ==="
+
+          # Restart app so Flask serves the new static file
+          systemctl restart research-app
+          sleep 3
+          systemctl is-active research-app
           SCRIPT
 
       - name: Report failure
@@ -74,7 +80,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          BODY=$(cat /tmp/gemini-output.txt /tmp/setup-output.txt 2>/dev/null | tail -80 || echo "no output captured")
+          BODY=$(cat /tmp/nanob-output.txt /tmp/gemini-output.txt /tmp/setup-output.txt 2>/dev/null | tail -80 || echo "no output captured")
           gh issue create \
             --repo "${{ github.repository }}" \
             --title "Deploy log — $(echo ${{ github.sha }} | cut -c1-7)" \
