@@ -36,37 +36,21 @@ jobs:
           set -o pipefail
           sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "chmod +x /tmp/setup.sh && /tmp/setup.sh '${{ secrets.ANTHROPIC_API_KEY }}'" 2>&1 | tee /tmp/setup-output.txt
 
-      - name: Install Gemini CLI + nano-banana
+      - name: Install infsh (nano-banana image gen)
         env:
           SSHPASS: ${{ secrets.DO_PASSWORD }}
         run: |
           set -o pipefail
           sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "chmod +x /tmp/install-gemini.sh && /tmp/install-gemini.sh '${{ secrets.GEMINI_API_KEY }}'" 2>&1 | tee /tmp/gemini-output.txt
 
-      - name: Verify nano-banana installation
+      - name: Verify infsh installation
         env:
           SSHPASS: ${{ secrets.DO_PASSWORD }}
         run: |
           set -o pipefail
-          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} bash -s 2>&1 | tee /tmp/verify-output.txt << 'SCRIPT'
-          set -ex
-          echo "=== Checking nano-banana commands ==="
-          for cmd in nano-banana nano-banana-2 nano-banana-mcp nanobanana; do
-            if command -v "$cmd" &>/dev/null; then
-              echo "FOUND: $cmd at $(which $cmd)"
-              $cmd --version 2>&1 || true
-            else
-              echo "NOT FOUND: $cmd"
-            fi
-          done
-          echo "=== npm global packages ==="
-          npm ls -g --depth=0 2>&1
-          echo "=== npm global bin contents ==="
-          ls -la $(npm prefix -g)/bin/ | grep -iE 'banana|gemini|nano' || echo "No matching bin links"
-          echo "=== VERIFY DONE ==="
-          SCRIPT
+          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "infsh --version" 2>&1 | tee /tmp/verify-output.txt
 
-      - name: Generate background image with nano-banana-2
+      - name: Generate background image with infsh
         continue-on-error: true
         env:
           SSHPASS: ${{ secrets.DO_PASSWORD }}
@@ -84,7 +68,7 @@ jobs:
           fi
 
           source /root/.gemini-env
-          nano-banana-2 \
+          infsh generate \
             --prompt "Dark futuristic AI terminal background, deep black with subtle cyan grid lines forming a perspective grid, glowing cyan data nodes scattered across the grid intersections, faint blue-cyan light traces connecting nodes, dark sci-fi aesthetic, no text, seamless tileable pattern, 1920x1080" \
             --output /root/research-app/static/nexus-bg.png \
             --width 1920 --height 1080
