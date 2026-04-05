@@ -19,21 +19,26 @@ if ! command -v gemini &>/dev/null; then
 fi
 echo "Gemini CLI: $(gemini --version 2>&1 || echo 'installed')"
 
-# Install nanobanana extension
-echo "==> Installing nanobanana extension..."
-gemini extensions install https://github.com/gemini-cli-extensions/nanobanana 2>&1 || true
+# Install nano-banana-mcp (the actual npm package)
+echo "==> Installing nano-banana-mcp..."
+npm install -g nano-banana-mcp
+echo "==> Checking installed binaries from nano-banana-mcp..."
+npm ls -g nano-banana-mcp --depth=0
+# Show what bin links were created
+ls -la $(npm prefix -g)/bin/ | grep -i banana || echo "No banana bin links found"
+# Check all common command names
+for cmd in nano-banana nano-banana-2 nano-banana-mcp nanobanana; do
+  if command -v "$cmd" &>/dev/null; then
+    echo "FOUND: $cmd at $(which $cmd)"
+    $cmd --version 2>&1 || true
+  else
+    echo "NOT FOUND: $cmd"
+  fi
+done
 
 # Set up Gemini API key
 export GEMINI_API_KEY
 echo "export GEMINI_API_KEY=$GEMINI_API_KEY" > /root/.gemini-env
 chmod 600 /root/.gemini-env
-
-# Verify nano-banana-2 is available
-if command -v nano-banana-2 &>/dev/null; then
-  echo "nano-banana-2: $(nano-banana-2 --version 2>&1 || echo 'available')"
-else
-  echo "WARN: nano-banana-2 not found in PATH, checking gemini extensions..."
-  gemini extensions list 2>&1 || true
-fi
 
 echo "=== GEMINI INSTALL COMPLETE ==="
