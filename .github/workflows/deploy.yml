@@ -29,6 +29,7 @@ jobs:
           sshpass -e scp -o StrictHostKeyChecking=no app.py root@${{ secrets.DO_HOST }}:/root/research-app/app.py
           sshpass -e scp -o StrictHostKeyChecking=no requirements.txt root@${{ secrets.DO_HOST }}:/root/research-app/requirements.txt
           sshpass -e scp -o StrictHostKeyChecking=no templates/index.html root@${{ secrets.DO_HOST }}:/root/research-app/templates/index.html
+          sshpass -e scp -o StrictHostKeyChecking=no templates/property.html root@${{ secrets.DO_HOST }}:/root/research-app/templates/property.html
 
       - name: Run setup
         env:

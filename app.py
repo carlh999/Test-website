@@ -40,17 +40,47 @@ SCOUT_PROMPT = (
     "Focus on actionable intelligence for someone looking to compete or enter this market."
 )
 
+PROPERTY_SYSTEM_PROMPT = (
+    "You are PROPLINK AI, a property management assistant. You have access to the following "
+    "live dashboard data for a 14-unit apartment building:\n\n"
+    "TENANTS (10 occupied units):\n"
+    "- Unit 101: Maria Santos, $1,400/mo, Rent PAID, 0 maintenance requests\n"
+    "- Unit 102: James Chen, $1,550/mo, Rent OVERDUE, 2 maintenance requests (leaking kitchen faucet [HIGH], broken window latch bedroom [MEDIUM])\n"
+    "- Unit 103: Aisha Patel, $1,200/mo, Rent PAID, 0 maintenance requests\n"
+    "- Unit 201: David Kim, $1,600/mo, Rent PAID, 1 maintenance request (HVAC filter replacement [LOW])\n"
+    "- Unit 202: Sarah Johnson, $1,400/mo, Rent OVERDUE, 0 maintenance requests\n"
+    "- Unit 203: Omar Hassan, $1,350/mo, Rent PAID, 1 maintenance request (dishwasher not draining [MEDIUM])\n"
+    "- Unit 301: Emily Turner, $1,750/mo, Rent PAID, 0 maintenance requests\n"
+    "- Unit 302: Lucas Rivera, $1,400/mo, Rent OVERDUE, 3 maintenance requests (bathroom ceiling water stain [HIGH], front door deadbolt jammed [HIGH], garbage disposal broken [MEDIUM])\n"
+    "- Unit 303: Nina Volkov, $1,500/mo, Rent PAID, 0 maintenance requests\n"
+    "- Unit 401: Ryan McCarthy, $1,600/mo, Rent PAID, 1 maintenance request (intercom buzzer not working [LOW])\n\n"
+    "VACANT UNITS (4):\n"
+    "- Unit 104: 1BR, asking $1,300/mo\n"
+    "- Unit 204: 2BR, asking $1,650/mo\n"
+    "- Unit 304: 1BR, asking $1,350/mo\n"
+    "- Unit 402: 2BR, asking $1,700/mo\n\n"
+    "SUMMARY:\n"
+    "- Total rent collected: $14,200 (7 paid tenants)\n"
+    "- Total overdue: $3,950 (3 tenants: James Chen $1,550, Sarah Johnson $1,400, Lucas Rivera $1,400 -- note: Lucas Rivera has the most maintenance issues)\n"
+    "- Open maintenance requests: 8 total (3 HIGH, 3 MEDIUM, 2 LOW)\n"
+    "- Occupancy rate: 71% (10/14)\n\n"
+    "Answer questions about this data concisely and accurately. Use the terminal style — "
+    "be direct, use bullet points, reference specific unit numbers and tenant names. "
+    "If asked about trends or recommendations, give actionable advice based on the data."
+)
 
-def _stream_agent(system_prompt, user_message):
+
+def _stream_agent(system_prompt, user_message, messages=None):
     """Stream a response from Claude with the given system prompt."""
     def generate():
         try:
             client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+            msg_list = messages if messages else [{"role": "user", "content": user_message}]
             with client.messages.stream(
                 model="claude-sonnet-4-6",
                 max_tokens=1024,
                 system=system_prompt,
-                messages=[{"role": "user", "content": user_message}],
+                messages=msg_list,
             ) as stream:
                 for text in stream.text_stream:
                     yield f"data: {json.dumps({'text': text})}\n\n"
@@ -68,6 +98,20 @@ def _stream_agent(system_prompt, user_message):
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+@app.route("/property")
+def property_page():
+    return render_template("property.html")
+
+
+@app.route("/property/chat", methods=["POST"])
+def property_chat():
+    data = request.get_json()
+    messages = (data or {}).get("messages", [])
+    if not messages:
+        return {"error": "No messages provided"}, 400
+    return _stream_agent(PROPERTY_SYSTEM_PROMPT, messages[-1]["content"], messages=messages)
 
 
 @app.route("/research", methods=["POST"])
