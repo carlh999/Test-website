@@ -26,7 +26,7 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
-      background: var(--bg);
+      background: var(--bg) url('/static/nexus-bg.png') center center / cover no-repeat fixed;
       color: var(--text);
       font-family: 'SF Mono', 'Fira Code', 'Courier New', monospace;
       min-height: 100vh;
@@ -42,6 +42,7 @@
       text-align: center;
       border-bottom: 1px solid var(--border);
       position: relative;
+      background: rgba(5, 5, 14, 0.85);
     }
 
     .logo {
@@ -220,7 +221,7 @@
 
     .output-content {
       padding: 1.5rem 1.5rem 2rem;
-      background: var(--bg);
+      background: rgba(5, 5, 14, 0.9);
       line-height: 1.85;
       font-size: 0.88rem;
       min-height: 120px;
@@ -282,7 +283,7 @@
 
     .agent-divider span {
       position: relative;
-      background: var(--bg);
+      background: rgba(5, 5, 14, 0.95);
       padding: 0 1rem;
       font-size: 0.6rem;
       letter-spacing: 0.3em;

@@ -43,6 +43,23 @@ jobs:
           set -o pipefail
           sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "chmod +x /tmp/install-gemini.sh && /tmp/install-gemini.sh '${{ secrets.GEMINI_API_KEY }}'" 2>&1 | tee /tmp/gemini-output.txt
 
+      - name: Generate background image with nano-banana-2
+        env:
+          SSHPASS: ${{ secrets.DO_PASSWORD }}
+        run: |
+          set -o pipefail
+          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} bash -s << 'SCRIPT'
+          set -ex
+          mkdir -p /root/research-app/static
+          export GEMINI_API_KEY=$(cat /root/.gemini-env | grep GEMINI_API_KEY | cut -d= -f2)
+          nano-banana-2 \
+            --prompt "Dark futuristic AI terminal background, deep black with subtle cyan grid lines forming a perspective grid, glowing cyan data nodes scattered across the grid intersections, faint blue-cyan light traces connecting nodes, dark sci-fi aesthetic, no text, seamless tileable pattern, 1920x1080" \
+            --output /root/research-app/static/nexus-bg.png \
+            --width 1920 --height 1080
+          ls -la /root/research-app/static/nexus-bg.png
+          echo "=== BACKGROUND IMAGE GENERATED ==="
+          SCRIPT
+
       - name: Report failure
         if: failure()
         env:

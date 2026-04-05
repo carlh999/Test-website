@@ -47,6 +47,9 @@ RestartSec=3
 WantedBy=multi-user.target
 EOF
 
+# Ensure static dir exists
+mkdir -p /root/research-app/static
+
 # Clean start
 rm -rf /root/research-app/venv
 systemctl stop research-app 2>/dev/null || true
