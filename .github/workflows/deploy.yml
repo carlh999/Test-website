@@ -25,6 +25,7 @@ jobs:
           sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "mkdir -p /root/research-app/templates"
           sshpass -e scp -o StrictHostKeyChecking=no deploy/setup.sh root@${{ secrets.DO_HOST }}:/tmp/setup.sh
           sshpass -e scp -o StrictHostKeyChecking=no deploy/install-gemini.sh root@${{ secrets.DO_HOST }}:/tmp/install-gemini.sh
+          sshpass -e scp -o StrictHostKeyChecking=no deploy/generate-bg.py root@${{ secrets.DO_HOST }}:/tmp/generate-bg.py
           sshpass -e scp -o StrictHostKeyChecking=no app.py root@${{ secrets.DO_HOST }}:/root/research-app/app.py
           sshpass -e scp -o StrictHostKeyChecking=no requirements.txt root@${{ secrets.DO_HOST }}:/root/research-app/requirements.txt
           sshpass -e scp -o StrictHostKeyChecking=no templates/index.html root@${{ secrets.DO_HOST }}:/root/research-app/templates/index.html
@@ -36,31 +37,30 @@ jobs:
           set -o pipefail
           sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "chmod +x /tmp/setup.sh && /tmp/setup.sh '${{ secrets.ANTHROPIC_API_KEY }}'" 2>&1 | tee /tmp/setup-output.txt
 
-      - name: Install infsh (nano-banana image gen)
+      - name: Install Gemini Python SDK
         env:
           SSHPASS: ${{ secrets.DO_PASSWORD }}
         run: |
           set -o pipefail
           sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "chmod +x /tmp/install-gemini.sh && /tmp/install-gemini.sh '${{ secrets.GEMINI_API_KEY }}'" 2>&1 | tee /tmp/gemini-output.txt
 
-      - name: Verify infsh installation
+      - name: Verify Gemini SDK
         env:
           SSHPASS: ${{ secrets.DO_PASSWORD }}
         run: |
           set -o pipefail
-          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "infsh --version" 2>&1 | tee /tmp/verify-output.txt
+          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "python3 -c \"from google import genai; print('google-genai OK')\"" 2>&1 | tee /tmp/verify-output.txt
 
-      - name: Generate background image with infsh
-        continue-on-error: true
+      - name: Generate background image
         env:
           SSHPASS: ${{ secrets.DO_PASSWORD }}
         run: |
           set -o pipefail
-          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} bash -s 2>&1 | tee /tmp/nanob-output.txt << 'SCRIPT'
+          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} bash -s 2>&1 | tee /tmp/imagegen-output.txt << 'SCRIPT'
           set -ex
           mkdir -p /root/research-app/static
 
-          # Skip regeneration if image already exists
+          # Skip if image already exists
           if [ -f /root/research-app/static/nexus-bg.png ]; then
             echo "=== nexus-bg.png already exists, skipping generation ==="
             ls -la /root/research-app/static/nexus-bg.png
@@ -68,10 +68,7 @@ jobs:
           fi
 
           source /root/.gemini-env
-          infsh generate \
-            --prompt "Dark futuristic AI terminal background, deep black with subtle cyan grid lines forming a perspective grid, glowing cyan data nodes scattered across the grid intersections, faint blue-cyan light traces connecting nodes, dark sci-fi aesthetic, no text, seamless tileable pattern, 1920x1080" \
-            --output /root/research-app/static/nexus-bg.png \
-            --width 1920 --height 1080
+          python3 /tmp/generate-bg.py /root/research-app/static/nexus-bg.png
 
           ls -la /root/research-app/static/nexus-bg.png
           echo "=== BACKGROUND IMAGE GENERATED ==="
@@ -87,7 +84,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          BODY=$(cat /tmp/verify-output.txt /tmp/nanob-output.txt /tmp/gemini-output.txt /tmp/setup-output.txt 2>/dev/null | tail -80 || echo "no output captured")
+          BODY=$(cat /tmp/imagegen-output.txt /tmp/verify-output.txt /tmp/gemini-output.txt /tmp/setup-output.txt 2>/dev/null | tail -80 || echo "no output captured")
           gh issue create \
             --repo "${{ github.repository }}" \
             --title "Deploy log — $(echo ${{ github.sha }} | cut -c1-7)" \
