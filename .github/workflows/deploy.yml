@@ -2,7 +2,7 @@ name: Deploy to DigitalOcean
 
 on:
   push:
-    branches: [claude/setup-local-test-website-HYAsM]
+    branches: ['claude/*']
 
 permissions:
   issues: write
@@ -15,113 +15,78 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup server dependencies and config
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.DO_HOST }}
-          username: root
-          password: ${{ secrets.DO_PASSWORD }}
-          envs: ANTHROPIC_API_KEY
-          script: |
-            set -e
-            export DEBIAN_FRONTEND=noninteractive
+      - name: Install sshpass
+        run: sudo apt-get install -y -qq sshpass
 
-            echo "==> Installing system packages"
-            apt-get update -qq
-            apt-get install -y -qq nginx python3
-
-            echo "==> Installing Python packages"
-            pip3 install -q flask anthropic
-
-            echo "==> Creating app directories"
-            mkdir -p /root/research-app/templates
-
-            echo "==> Writing API key env file"
-            printf 'ANTHROPIC_API_KEY=%s\n' "$ANTHROPIC_API_KEY" > /root/.flask-env
-            chmod 600 /root/.flask-env
-
-            echo "==> Writing nginx config"
-            cat > /etc/nginx/sites-available/default << 'NGINX'
-            server {
-                listen 80;
-                location / {
-                    proxy_pass http://127.0.0.1:5000;
-                    proxy_set_header Host $host;
-                    proxy_set_header X-Real-IP $remote_addr;
-                    proxy_http_version 1.1;
-                    proxy_buffering off;
-                    proxy_cache off;
-                    add_header X-Accel-Buffering no;
-                }
-            }
-            NGINX
-
-            echo "==> Writing systemd service"
-            cat > /etc/systemd/system/research-app.service << 'SERVICE'
-            [Unit]
-            Description=NEXUS Research Agent Flask App
-            After=network.target
-
-            [Service]
-            Type=simple
-            User=root
-            WorkingDirectory=/root/research-app
-            EnvironmentFile=/root/.flask-env
-            ExecStart=/usr/bin/python3 /root/research-app/app.py
-            Restart=always
-            RestartSec=3
-
-            [Install]
-            WantedBy=multi-user.target
-            SERVICE
-
-            echo "==> Enabling services"
-            systemctl daemon-reload
-            systemctl enable research-app
-            systemctl enable nginx
-            systemctl start nginx || systemctl reload nginx
-            echo "==> Setup complete"
+      - name: Copy files to server
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SSHPASS: ${{ secrets.DO_PASSWORD }}
+        run: |
+          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "mkdir -p /root/research-app/templates"
+          sshpass -e scp -o StrictHostKeyChecking=no deploy/setup.sh root@${{ secrets.DO_HOST }}:/tmp/setup.sh
+          sshpass -e scp -o StrictHostKeyChecking=no deploy/install-gemini.sh root@${{ secrets.DO_HOST }}:/tmp/install-gemini.sh
+          sshpass -e scp -o StrictHostKeyChecking=no deploy/generate-bg.py root@${{ secrets.DO_HOST }}:/tmp/generate-bg.py
+          sshpass -e scp -o StrictHostKeyChecking=no app.py root@${{ secrets.DO_HOST }}:/root/research-app/app.py
+          sshpass -e scp -o StrictHostKeyChecking=no requirements.txt root@${{ secrets.DO_HOST }}:/root/research-app/requirements.txt
+          sshpass -e scp -o StrictHostKeyChecking=no templates/index.html root@${{ secrets.DO_HOST }}:/root/research-app/templates/index.html
+          sshpass -e scp -o StrictHostKeyChecking=no templates/property.html root@${{ secrets.DO_HOST }}:/root/research-app/templates/property.html
 
-      - name: Deploy app files
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.DO_HOST }}
-          username: root
-          password: ${{ secrets.DO_PASSWORD }}
-          source: "app.py,templates,requirements.txt"
-          target: /root/research-app/
+      - name: Run setup
+        env:
+          SSHPASS: ${{ secrets.DO_PASSWORD }}
+        run: |
+          set -o pipefail
+          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "chmod +x /tmp/setup.sh && /tmp/setup.sh '${{ secrets.ANTHROPIC_API_KEY }}'" 2>&1 | tee /tmp/setup-output.txt
 
-      - name: Restart services and verify
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.DO_HOST }}
-          username: root
-          password: ${{ secrets.DO_PASSWORD }}
-          script: |
-            set -e
-            echo "==> Restarting Flask app"
-            systemctl restart research-app
-            sleep 3
-            echo "==> Verifying Flask is active"
-            systemctl is-active research-app
-            echo "==> Reloading nginx"
-            systemctl reload nginx
-            echo "==> Health check"
-            curl -sf http://localhost:5000/ > /dev/null && echo "App responding OK" || echo "WARNING: app not yet responding"
+      - name: Install Gemini Python SDK
+        env:
+          SSHPASS: ${{ secrets.DO_PASSWORD }}
+        run: |
+          set -o pipefail
+          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "chmod +x /tmp/install-gemini.sh && /tmp/install-gemini.sh '${{ secrets.GEMINI_API_KEY }}'" 2>&1 | tee /tmp/gemini-output.txt
 
-      - name: Report failure as GitHub Issue
+      - name: Verify Gemini SDK
+        env:
+          SSHPASS: ${{ secrets.DO_PASSWORD }}
+        run: |
+          set -o pipefail
+          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} "python3 -c \"from google import genai; print('google-genai OK')\"" 2>&1 | tee /tmp/verify-output.txt
+
+      - name: Generate background image
+        env:
+          SSHPASS: ${{ secrets.DO_PASSWORD }}
+        run: |
+          set -o pipefail
+          sshpass -e ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_HOST }} bash -s 2>&1 | tee /tmp/imagegen-output.txt << 'SCRIPT'
+          set -ex
+          mkdir -p /root/research-app/static
+
+          # Skip if image already exists
+          if [ -f /root/research-app/static/nexus-bg.png ]; then
+            echo "=== nexus-bg.png already exists, skipping generation ==="
+            ls -la /root/research-app/static/nexus-bg.png
+            exit 0
+          fi
+
+          source /root/.gemini-env
+          python3 /tmp/generate-bg.py /root/research-app/static/nexus-bg.png
+
+          ls -la /root/research-app/static/nexus-bg.png
+          echo "=== BACKGROUND IMAGE GENERATED ==="
+
+          # Restart app so Flask serves the new static file
+          systemctl restart research-app
+          sleep 3
+          systemctl is-active research-app
+          SCRIPT
+
+      - name: Report failure
         if: failure()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          BODY=$(cat /tmp/imagegen-output.txt /tmp/verify-output.txt /tmp/gemini-output.txt /tmp/setup-output.txt 2>/dev/null | tail -80 || echo "no output captured")
           gh issue create \
             --repo "${{ github.repository }}" \
-            --title "Deploy failed — $(echo ${{ github.sha }} | cut -c1-7)" \
-            --body "## Deploy Failed
-
-**Commit:** \`${{ github.sha }}\`
-**Run logs:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
-Expand the failing step in the run logs to see the exact error."
+            --title "Deploy log — $(echo ${{ github.sha }} | cut -c1-7)" \
+            --body "$(printf '```\n%s\n```' "$BODY")" || true

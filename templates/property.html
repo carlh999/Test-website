@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PROPLINK — Property Management Terminal</title>
+  <style>
+    :root {
+      --bg:      #05050e;
+      --panel:   #0b0b1a;
+      --border:  #1a1a30;
+      --cyan:    #00f0ff;
+      --purple:  #b060ff;
+      --green:   #00ff88;
+      --gold:    #ffd060;
+      --red:     #ff4d6d;
+      --text:    #c0c8e0;
+      --muted:   #3a4060;
+      --orange:  #ff8c00;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: var(--bg) url('/static/nexus-bg.png') center center / cover no-repeat fixed;
+      color: var(--text);
+      font-family: 'SF Mono', 'Fira Code', 'Courier New', monospace;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    /* ── Header ── */
+    header {
+      width: 100%;
+      padding: 2rem 1.5rem 1.5rem;
+      text-align: center;
+      border-bottom: 1px solid var(--border);
+      position: relative;
+      background: rgba(5, 5, 14, 0.85);
+    }
+
+    .logo {
+      font-size: clamp(1.8rem, 7vw, 3rem);
+      font-weight: 700;
+      letter-spacing: 0.45em;
+      color: var(--purple);
+      text-shadow: 0 0 30px rgba(176,96,255,0.5), 0 0 60px rgba(176,96,255,0.2);
+    }
+
+    .tagline {
+      margin-top: 0.4rem;
+      font-size: 0.7rem;
+      letter-spacing: 0.3em;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+
+    .version {
+      position: absolute;
+      top: 1rem;
+      right: 1.5rem;
+      font-size: 0.65rem;
+      color: var(--muted);
+      letter-spacing: 0.1em;
+    }
+
+    nav {
+      position: absolute;
+      top: 1rem;
+      left: 1.5rem;
+    }
+
+    nav a {
+      font-size: 0.65rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--cyan);
+      text-decoration: none;
+      border: 1px solid var(--border);
+      padding: 0.3rem 0.8rem;
+      border-radius: 3px;
+      transition: border-color 0.2s, background 0.2s;
+    }
+
+    nav a:hover {
+      border-color: var(--cyan);
+      background: rgba(0,240,255,0.06);
+    }
+
+    /* ── Main ── */
+    main {
+      width: 100%;
+      max-width: 960px;
+      padding: 2rem 1.5rem 4rem;
+    }
+
+    /* ── Stats bar ── */
+    .stats-bar {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 2rem;
+      flex-wrap: wrap;
+    }
+
+    .stat-card {
+      flex: 1;
+      min-width: 140px;
+      padding: 1rem 1.2rem;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+    }
+
+    .stat-label {
+      font-size: 0.6rem;
+      letter-spacing: 0.25em;
+      color: var(--muted);
+      text-transform: uppercase;
+      margin-bottom: 0.4rem;
+    }
+
+    .stat-value {
+      font-size: 1.4rem;
+      font-weight: 700;
+    }
+
+    .stat-value.cyan   { color: var(--cyan); }
+    .stat-value.green  { color: var(--green); }
+    .stat-value.red    { color: var(--red); }
+    .stat-value.gold   { color: var(--gold); }
+    .stat-value.purple { color: var(--purple); }
+
+    /* ── Section headers ── */
+    .section-header {
+      font-size: 0.65rem;
+      letter-spacing: 0.25em;
+      color: var(--muted);
+      text-transform: uppercase;
+      margin-bottom: 0.8rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    /* ── Tenant table ── */
+    .table-wrap {
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      overflow: hidden;
+      margin-bottom: 2rem;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+    }
+
+    thead {
+      background: var(--panel);
+    }
+
+    th {
+      padding: 0.7rem 1rem;
+      text-align: left;
+      font-size: 0.6rem;
+      letter-spacing: 0.2em;
+      color: var(--muted);
+      text-transform: uppercase;
+      font-weight: 600;
+      border-bottom: 1px solid var(--border);
+    }
+
+    td {
+      padding: 0.6rem 1rem;
+      border-bottom: 1px solid rgba(26,26,48,0.5);
+      background: rgba(5, 5, 14, 0.9);
+    }
+
+    tr:last-child td { border-bottom: none; }
+
+    .status-paid {
+      color: var(--green);
+      font-weight: 600;
+      font-size: 0.7rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .status-overdue {
+      color: var(--red);
+      font-weight: 600;
+      font-size: 0.7rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .maintenance-count {
+      color: var(--gold);
+      font-weight: 600;
+    }
+
+    .maintenance-none {
+      color: var(--muted);
+    }
+
+    /* ── Vacant units ── */
+    .vacant-wrap {
+      margin-bottom: 2rem;
+    }
+
+    .vacant-grid {
+      display: flex;
+      gap: 0.8rem;
+      flex-wrap: wrap;
+    }
+
+    .vacant-card {
+      padding: 0.8rem 1.2rem;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      min-width: 120px;
+    }
+
+    .vacant-unit {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--orange);
+    }
+
+    .vacant-detail {
+      font-size: 0.65rem;
+      color: var(--muted);
+      margin-top: 0.3rem;
+    }
+
+    /* ── Maintenance panel ── */
+    .maint-wrap {
+      margin-bottom: 2rem;
+    }
+
+    .maint-list {
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .maint-item {
+      padding: 0.7rem 1rem;
+      background: rgba(5, 5, 14, 0.9);
+      border-bottom: 1px solid rgba(26,26,48,0.5);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.8rem;
+    }
+
+    .maint-item:last-child { border-bottom: none; }
+
+    .maint-desc { color: var(--text); }
+    .maint-unit { color: var(--gold); font-weight: 600; font-size: 0.7rem; }
+
+    .priority-high {
+      color: var(--red);
+      font-size: 0.6rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+
+    .priority-medium {
+      color: var(--orange);
+      font-size: 0.6rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+
+    .priority-low {
+      color: var(--muted);
+      font-size: 0.6rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+
+    /* ── Chat ── */
+    .chat-section {
+      margin-top: 1rem;
+    }
+
+    .chat-box {
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .chat-header {
+      padding: 0.6rem 1.2rem;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      font-size: 0.65rem;
+      letter-spacing: 0.2em;
+      color: var(--purple);
+      text-transform: uppercase;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .chat-messages {
+      padding: 1.2rem;
+      background: rgba(5, 5, 14, 0.9);
+      min-height: 180px;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
+    .chat-msg {
+      margin-bottom: 1rem;
+      line-height: 1.7;
+      font-size: 0.85rem;
+    }
+
+    .chat-msg:last-child { margin-bottom: 0; }
+
+    .chat-role {
+      font-size: 0.6rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      font-weight: 700;
+      margin-bottom: 0.2rem;
+    }
+
+    .chat-role.user-role { color: var(--cyan); }
+    .chat-role.ai-role { color: var(--purple); }
+
+    .chat-text {
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .chat-input-row {
+      display: flex;
+      border-top: 1px solid var(--border);
+    }
+
+    .chat-input-row input {
+      flex: 1;
+      padding: 0.85rem 1.2rem;
+      background: var(--panel);
+      border: none;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.88rem;
+      outline: none;
+    }
+
+    .chat-input-row input::placeholder { color: var(--muted); }
+
+    .chat-input-row button {
+      padding: 0 1.5rem;
+      background: transparent;
+      border: none;
+      border-left: 1px solid var(--border);
+      color: var(--purple);
+      font-family: inherit;
+      font-size: 0.7rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .chat-input-row button:hover:not(:disabled) {
+      background: rgba(176,96,255,0.08);
+    }
+
+    .chat-input-row button:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+
+    /* ── Cursor ── */
+    .cursor {
+      display: inline-block;
+      width: 8px; height: 1em;
+      margin-left: 2px;
+      vertical-align: text-bottom;
+      animation: blink-cursor 0.8s step-end infinite;
+    }
+
+    .cursor.purple { background: var(--purple); }
+
+    @keyframes blink-cursor {
+      50% { opacity: 0; }
+    }
+
+    /* ── Footer ── */
+    footer {
+      margin-top: auto;
+      padding: 1.5rem;
+      font-size: 0.65rem;
+      color: var(--muted);
+      letter-spacing: 0.15em;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <nav><a href="/">NEXUS</a></nav>
+  <div class="version">v1.0 / SONNET-4.6</div>
+  <div class="logo">PROPLINK</div>
+  <div class="tagline">AI Property Management Terminal</div>
+</header>
+
+<main>
+  <!-- Stats -->
+  <div class="stats-bar">
+    <div class="stat-card">
+      <div class="stat-label">Total Units</div>
+      <div class="stat-value cyan">14</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Occupied</div>
+      <div class="stat-value green">10</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Vacant</div>
+      <div class="stat-value orange" style="color: var(--orange);">4</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Rent Collected</div>
+      <div class="stat-value green">$14,200</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Overdue</div>
+      <div class="stat-value red">$3,950</div>
+    </div>
+  </div>
+
+  <!-- Tenant table -->
+  <div class="section-header">// Tenant Register</div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Unit</th>
+          <th>Tenant</th>
+          <th>Rent</th>
+          <th>Status</th>
+          <th>Maint.</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>101</td><td>Maria Santos</td><td>$1,400</td><td><span class="status-paid">Paid</span></td><td><span class="maintenance-none">0</span></td></tr>
+        <tr><td>102</td><td>James Chen</td><td>$1,550</td><td><span class="status-overdue">Overdue</span></td><td><span class="maintenance-count">2</span></td></tr>
+        <tr><td>103</td><td>Aisha Patel</td><td>$1,200</td><td><span class="status-paid">Paid</span></td><td><span class="maintenance-none">0</span></td></tr>
+        <tr><td>201</td><td>David Kim</td><td>$1,600</td><td><span class="status-paid">Paid</span></td><td><span class="maintenance-count">1</span></td></tr>
+        <tr><td>202</td><td>Sarah Johnson</td><td>$1,400</td><td><span class="status-overdue">Overdue</span></td><td><span class="maintenance-none">0</span></td></tr>
+        <tr><td>203</td><td>Omar Hassan</td><td>$1,350</td><td><span class="status-paid">Paid</span></td><td><span class="maintenance-count">1</span></td></tr>
+        <tr><td>301</td><td>Emily Turner</td><td>$1,750</td><td><span class="status-paid">Paid</span></td><td><span class="maintenance-none">0</span></td></tr>
+        <tr><td>302</td><td>Lucas Rivera</td><td>$1,400</td><td><span class="status-overdue">Overdue</span></td><td><span class="maintenance-count">3</span></td></tr>
+        <tr><td>303</td><td>Nina Volkov</td><td>$1,500</td><td><span class="status-paid">Paid</span></td><td><span class="maintenance-none">0</span></td></tr>
+        <tr><td>401</td><td>Ryan McCarthy</td><td>$1,600</td><td><span class="status-paid">Paid</span></td><td><span class="maintenance-count">1</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Vacant Units -->
+  <div class="vacant-wrap">
+    <div class="section-header">// Vacant Units</div>
+    <div class="vacant-grid">
+      <div class="vacant-card">
+        <div class="vacant-unit">104</div>
+        <div class="vacant-detail">1BR / $1,300/mo</div>
+      </div>
+      <div class="vacant-card">
+        <div class="vacant-unit">204</div>
+        <div class="vacant-detail">2BR / $1,650/mo</div>
+      </div>
+      <div class="vacant-card">
+        <div class="vacant-unit">304</div>
+        <div class="vacant-detail">1BR / $1,350/mo</div>
+      </div>
+      <div class="vacant-card">
+        <div class="vacant-unit">402</div>
+        <div class="vacant-detail">2BR / $1,700/mo</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Maintenance Requests -->
+  <div class="maint-wrap">
+    <div class="section-header">// Open Maintenance Requests</div>
+    <div class="maint-list">
+      <div class="maint-item">
+        <div><span class="maint-unit">102</span> &mdash; <span class="maint-desc">Leaking kitchen faucet</span></div>
+        <span class="priority-high">High</span>
+      </div>
+      <div class="maint-item">
+        <div><span class="maint-unit">102</span> &mdash; <span class="maint-desc">Broken window latch (bedroom)</span></div>
+        <span class="priority-medium">Medium</span>
+      </div>
+      <div class="maint-item">
+        <div><span class="maint-unit">201</span> &mdash; <span class="maint-desc">HVAC filter replacement</span></div>
+        <span class="priority-low">Low</span>
+      </div>
+      <div class="maint-item">
+        <div><span class="maint-unit">203</span> &mdash; <span class="maint-desc">Dishwasher not draining</span></div>
+        <span class="priority-medium">Medium</span>
+      </div>
+      <div class="maint-item">
+        <div><span class="maint-unit">302</span> &mdash; <span class="maint-desc">Bathroom ceiling water stain</span></div>
+        <span class="priority-high">High</span>
+      </div>
+      <div class="maint-item">
+        <div><span class="maint-unit">302</span> &mdash; <span class="maint-desc">Front door deadbolt jammed</span></div>
+        <span class="priority-high">High</span>
+      </div>
+      <div class="maint-item">
+        <div><span class="maint-unit">302</span> &mdash; <span class="maint-desc">Garbage disposal broken</span></div>
+        <span class="priority-medium">Medium</span>
+      </div>
+      <div class="maint-item">
+        <div><span class="maint-unit">401</span> &mdash; <span class="maint-desc">Intercom buzzer not working</span></div>
+        <span class="priority-low">Low</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI Chat -->
+  <div class="chat-section">
+    <div class="section-header">// AI Property Assistant</div>
+    <div class="chat-box">
+      <div class="chat-header">
+        <span>PROPLINK AI &mdash; Ask about tenants, rent, maintenance, vacancies</span>
+        <span id="chat-indicator"></span>
+      </div>
+      <div class="chat-messages" id="chat-messages">
+        <div class="chat-msg">
+          <div class="chat-role ai-role">PROPLINK AI</div>
+          <div class="chat-text">Property dashboard loaded. Ask me anything about tenants, rent status, maintenance requests, or vacant units.</div>
+        </div>
+      </div>
+      <div class="chat-input-row">
+        <input type="text" id="chat-input" placeholder="e.g. Which tenants are overdue? What are the high-priority maintenance issues?" autocomplete="off" />
+        <button id="chat-btn" onclick="sendChat()">Send</button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>PROPLINK PROPERTY MANAGEMENT TERMINAL &mdash; POWERED BY CLAUDE SONNET 4.6</footer>
+
+<script>
+  const chatMessages = document.getElementById('chat-messages');
+  const chatInput = document.getElementById('chat-input');
+  const chatBtn = document.getElementById('chat-btn');
+  let chatHistory = [];
+
+  function escapeHtml(t) {
+    return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function addMessage(role, text) {
+    const div = document.createElement('div');
+    div.className = 'chat-msg';
+    const roleClass = role === 'user' ? 'user-role' : 'ai-role';
+    const roleName = role === 'user' ? 'YOU' : 'PROPLINK AI';
+    div.innerHTML = `<div class="chat-role ${roleClass}">${roleName}</div><div class="chat-text">${escapeHtml(text)}</div>`;
+    chatMessages.appendChild(div);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    return div;
+  }
+
+  async function sendChat() {
+    const msg = chatInput.value.trim();
+    if (!msg) return;
+
+    chatBtn.disabled = true;
+    chatInput.value = '';
+    addMessage('user', msg);
+    chatHistory.push({ role: 'user', content: msg });
+
+    // Add streaming AI message
+    const aiDiv = document.createElement('div');
+    aiDiv.className = 'chat-msg';
+    aiDiv.innerHTML = `<div class="chat-role ai-role">PROPLINK AI</div><div class="chat-text"><span class="cursor purple"></span></div>`;
+    chatMessages.appendChild(aiDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    const textEl = aiDiv.querySelector('.chat-text');
+
+    let buffer = '';
+    let sseBuffer = '';
+
+    try {
+      const resp = await fetch('/property/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: chatHistory }),
+      });
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let done = false;
+
+      while (!done) {
+        const { value, done: streamDone } = await reader.read();
+        done = streamDone;
+        if (value) {
+          sseBuffer += decoder.decode(value, { stream: true });
+          const lines = sseBuffer.split('\n');
+          sseBuffer = lines.pop();
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const payload = line.slice(6);
+            if (payload === '[DONE]') { done = true; break; }
+            try {
+              const obj = JSON.parse(payload);
+              if (obj.error) throw new Error(obj.error);
+              buffer += obj.text;
+              textEl.innerHTML = escapeHtml(buffer) + '<span class="cursor purple"></span>';
+              chatMessages.scrollTop = chatMessages.scrollHeight;
+            } catch (e) {
+              textEl.innerHTML = `<span style="color:var(--red);">Error: ${escapeHtml(e.message)}</span>`;
+              chatBtn.disabled = false;
+              return;
+            }
+          }
+        }
+      }
+
+      textEl.textContent = buffer;
+      chatHistory.push({ role: 'assistant', content: buffer });
+    } catch (e) {
+      textEl.innerHTML = `<span style="color:var(--red);">Connection error: ${escapeHtml(e.message)}</span>`;
+    }
+
+    chatBtn.disabled = false;
+    chatInput.focus();
+  }
+
+  chatInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') sendChat();
+  });
+</script>
+
+</body>
+</html>
